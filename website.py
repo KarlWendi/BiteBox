@@ -4,7 +4,7 @@ import streamlit as st
 from menu import format_price
 from web_client import APIError, request_api
 
-st.set_page_config(page_title="Stacked | Fresh food, fast", page_icon="🍔", layout="wide")
+st.set_page_config(page_title="BiteBox | Fresh food, fast", page_icon="🍔", layout="wide")
 st.markdown("""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;700&family=Outfit:wght@600;700;800&display=swap');
@@ -23,7 +23,7 @@ h1,h2,h3{font-family:'Outfit',sans-serif!important;letter-spacing:-.025em}[data-
 
 ICONS={"Burger":"🍔","Cheeseburger":"🧀","Chicken Burger":"🍗","Veggie Burger":"🌱","Fries":"🍟","Wrap":"🌯","Chicken Nuggets":"🍗","Onion Rings":"🧅","Side Salad":"🥗","Cola":"🥤","Bottled Water":"💧","Chocolate Milkshake":"🥛"}
 
-st.markdown("""<div class="site-nav"><div class="brand"><span class="brand-mark">S</span> STACKED</div><div class="nav-note">Order online · Collect fresh</div></div><section class="hero"><span class="eyebrow">Freshly made · Ready fast</span><h1>Big flavour.<br>Zero fuss.</h1><p>Build your perfect order from our freshly prepared favourites, check out in seconds, and follow it from kitchen to collection.</p><div class="hero-points"><span>✓ Fresh ingredients</span><span>✓ Live order status</span><span>✓ Easy collection</span></div></section>""",unsafe_allow_html=True)
+st.markdown("""<div class="site-nav"><div class="brand"><span class="brand-mark">B</span> BiteBox</div><div class="nav-note">Order online · Collect fresh</div></div><section class="hero"><span class="eyebrow">Freshly made · Ready fast</span><h1>Big flavour.<br>Zero fuss.</h1><p>Build your perfect order from our freshly prepared favourites, check out in seconds, and follow it from kitchen to collection.</p><div class="hero-points"><span>✓ Fresh ingredients</span><span>✓ Live order status</span><span>✓ Easy collection</span></div></section>""",unsafe_allow_html=True)
 if os.environ.get("TAKEAWAY_TEMPORARY_DEMO")=="1":st.info("Demo mode: orders are simulated, shared by visitors and may reset when the free service restarts.")
 notice=st.session_state.pop("order_notice",None)
 if notice:st.success(notice)
