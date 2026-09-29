@@ -106,4 +106,4 @@ with queue_tab:
         if queue["schedule"]:st.dataframe(queue["schedule"],hide_index=True,width="stretch")
         else:st.info("No queued orders to simulate.")
     except APIError as error:st.error(str(error))
-st.markdown('<div class="footer"><strong>STACKED</strong> · Educational ordering simulation · No payments or real deliveries</div>',unsafe_allow_html=True)
+st.markdown('<div class="footer"><strong>BiteBox</strong> · Educational ordering simulation · No payments or real deliveries</div>',unsafe_allow_html=True)
