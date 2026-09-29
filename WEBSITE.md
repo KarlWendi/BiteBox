@@ -1,4 +1,6 @@
-# Stage 7: a website written in Python
+# BiteBox: a website written in Python
+
+**BiteBox** is the customer-facing brand for this takeaway ordering simulator. It gives the project a memorable identity while the repository name continues to describe the software's purpose.
 
 Streamlit builds the browser interface from website.py. You do not write HTML. web_client.py sends HTTP requests to the existing FastAPI service; database.py remains responsible for transactions and stock.
 
