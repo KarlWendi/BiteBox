@@ -6,6 +6,7 @@ from pathlib import Path
 from fastapi.testclient import TestClient
 
 from api import create_app
+from test_support import STAFF_AUTH, configure_staff
 from database import checkout, get_menu, get_orders, initialise_database
 from kitchen import simulate_queue
 
@@ -96,11 +97,13 @@ class CheckoutDatabaseTests(unittest.TestCase):
 
 class CheckoutApiTests(unittest.TestCase):
     def setUp(self):
+        configure_staff(self)
         folder = tempfile.TemporaryDirectory()
         self.addCleanup(folder.cleanup)
         self.client = self.enterContext(
             TestClient(create_app(Path(folder.name) / "api.db"))
         )
+        self.client.auth = STAFF_AUTH
 
     def test_checkout_endpoint(self):
         response = self.client.post("/checkout", json={"items": [

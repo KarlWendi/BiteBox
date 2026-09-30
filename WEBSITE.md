@@ -1,5 +1,9 @@
 # BiteBox: a website written in Python
 
+Customers now use **Your orders** to see only orders placed in their session or reopened with a private tracking code. Save the code shown after checkout; it is needed after a browser session ends. **Forget order** removes it from the current session without cancelling the order.
+
+The **Staff** tab requires a login before showing all orders, kitchen timing, or preparation/collection buttons. Set `TAKEAWAY_STAFF_USERNAME` and a random `TAKEAWAY_STAFF_PASSWORD` of at least 16 characters on the API process (or website process in embedded demo mode). See [deployment setup](DEPLOYMENT.md#staff-login-and-private-tracking). Staff can log out, and the website login expires after one hour. The API independently checks credentials on every staff request.
+
 **BiteBox** is the customer-facing brand for this takeaway ordering simulator. It gives the project a memorable identity while the repository name continues to describe the software's purpose.
 
 Streamlit builds the browser interface from website.py. You do not write HTML. web_client.py sends HTTP requests to the existing FastAPI service; database.py remains responsible for transactions and stock.

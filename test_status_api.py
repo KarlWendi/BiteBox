@@ -5,15 +5,18 @@ from pathlib import Path
 from fastapi.testclient import TestClient
 
 from api import create_app
+from test_support import STAFF_AUTH, configure_staff
 
 
 class StatusApiTests(unittest.TestCase):
     def setUp(self):
+        configure_staff(self)
         self.folder = tempfile.TemporaryDirectory()
         self.addCleanup(self.folder.cleanup)
         self.path = Path(self.folder.name) / "test.db"
         self.client_context = TestClient(create_app(self.path))
         self.client = self.client_context.__enter__()
+        self.client.auth = STAFF_AUTH
         self.addCleanup(self.client_context.__exit__, None, None, None)
 
         response = self.client.post(

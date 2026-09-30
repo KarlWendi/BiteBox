@@ -1,6 +1,8 @@
 # A simple database module for a takeaway ordering system, providing functions to initialise the database, 
 # retrieve the menu, place orders, and retrieve all orders, with error handling for item not found and insufficient stock scenarios.
 import sqlite3
+import hashlib
+import secrets
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -80,6 +82,7 @@ def initialise_database(database_path=DATABASE_PATH):
                 "preparation_started_at": "TEXT",
                 "estimated_ready_at": "TEXT",
                 "status_updated_at": "TEXT",
+                "tracking_hash": "TEXT",
             }.items():
                 if column_name not in current_order_columns:
                     connection.execute(
@@ -89,6 +92,7 @@ def initialise_database(database_path=DATABASE_PATH):
                 UPDATE orders
                 SET status_updated_at = COALESCE(status_updated_at, created_at)
             """)
+            connection.execute("CREATE UNIQUE INDEX IF NOT EXISTS orders_tracking_hash ON orders(tracking_hash)")
             connection.execute("""
                 CREATE TABLE IF NOT EXISTS order_items (
                     id INTEGER PRIMARY KEY,
@@ -152,6 +156,7 @@ def place_order(item_id, quantity, database_path=DATABASE_PATH):
         "quantity": item["quantity"],
         "total_pence": order["total_pence"],
         "status": order["status"],
+        "tracking_code": order["tracking_code"],
     }
 
 
@@ -196,8 +201,10 @@ def checkout(items, database_path=DATABASE_PATH):
                 })
 
             total = sum(line["total_pence"] for line in lines)
+            tracking_code = secrets.token_urlsafe(32)
             result = connection.execute(
-                "INSERT INTO orders (total_pence) VALUES (?)", (total,)
+                "INSERT INTO orders (total_pence, tracking_hash) VALUES (?, ?)",
+                (total, hashlib.sha256(tracking_code.encode()).hexdigest()),
             )
             order_id = result.lastrowid
             for line in lines:
@@ -218,6 +225,7 @@ def checkout(items, database_path=DATABASE_PATH):
                 "total_pence": total,
                 "status": "queued",
                 "items": lines,
+                "tracking_code": tracking_code,
             }
         return order
     finally:
@@ -225,14 +233,18 @@ def checkout(items, database_path=DATABASE_PATH):
 
 # A function to retrieve all saved orders from the database, returning a list of dictionaries representing each order,
 # including its ID, item ID, name, quantity, total price in pence, status, and creation timestamp.
-def get_orders(database_path=DATABASE_PATH):
+def get_orders(database_path=DATABASE_PATH, *, tracking_code=None):
     connection = connect(database_path)
     try:
         with connection:
             _mark_elapsed_orders_ready(connection)
-        rows = connection.execute(
-            "SELECT * FROM orders ORDER BY id"
-        ).fetchall()
+        if tracking_code is None:
+            rows = connection.execute("SELECT * FROM orders ORDER BY id").fetchall()
+        else:
+            rows = connection.execute(
+                "SELECT * FROM orders WHERE tracking_hash = ?",
+                (hashlib.sha256(tracking_code.encode()).hexdigest(),),
+            ).fetchall()
         orders = []
         for row in rows:
             item_rows = connection.execute("""
@@ -246,6 +258,7 @@ def get_orders(database_path=DATABASE_PATH):
             """, (row["id"],)).fetchall()
             items = [dict(item) for item in item_rows]
             order = dict(row)
+            order.pop("tracking_hash", None)
             order["items"] = items
             # These summary fields keep the original single-item interface
             # compatible with the terminal, queue and earlier tests.

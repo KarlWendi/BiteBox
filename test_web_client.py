@@ -6,6 +6,7 @@ from unittest.mock import Mock, patch
 import httpx
 
 import web_client
+from test_support import STAFF_AUTH, configure_staff
 
 
 class WebClientRetryTests(unittest.TestCase):
@@ -39,6 +40,7 @@ class WebClientRetryTests(unittest.TestCase):
 
     @patch("web_client.httpx.request")
     def test_public_demo_uses_embedded_api(self, remote_request):
+        configure_staff(self)
         from api import create_app
         from database import initialise_database
 
@@ -56,6 +58,10 @@ class WebClientRetryTests(unittest.TestCase):
                 ),
             ):
                 result = web_client.request_api("GET", "/menu")
+                self.assertEqual(web_client.request_api("GET", "/orders", auth=STAFF_AUTH), [])
+                with self.assertRaises(web_client.APIError):
+                    web_client.request_api("GET", "/orders")
+                web_client._close_embedded_client()
 
         self.assertGreater(len(result), 3)
         self.assertEqual(result[0]["name"], "Burger")

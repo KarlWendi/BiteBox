@@ -5,13 +5,16 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from fastapi.testclient import TestClient
 from api import create_app
+from test_support import STAFF_AUTH, configure_staff
 from database import initialise_database, get_menu, place_order
 from menu import MENU
 from kitchen import PREP_MINUTES
 
 class ExpandedMenuTests(unittest.TestCase):
     def test_new_items_can_be_ordered_and_scheduled(self):
+        configure_staff(self)
         with TemporaryDirectory() as folder, TestClient(create_app(Path(folder) / 'menu.db')) as client:
+            client.auth = STAFF_AUTH
             catalogue = client.get('/menu').json()
             self.assertEqual(len(catalogue), 12)
             for item in catalogue[3:]:

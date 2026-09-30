@@ -63,8 +63,11 @@ Keep the terminal running and open http://127.0.0.1:8000/docs in a browser. Stop
 | --- | --- |
 | GET / | Show the API greeting |
 | GET /menu | Read products and current stock |
-| GET /orders | Read saved orders |
-| GET /queue?stations=2 | Simulate a queue using the saved queued orders |
+| GET /orders | Staff login required: read saved orders |
+| GET /queue?stations=2 | Staff login required: simulate the queue |
+| GET /staff/session | Verify staff login |
+| POST /track | Read one order using its private tracking code |
+| PATCH /orders/{id}/status | Staff login required: advance an order |
 | POST /orders | Validate, reserve stock and save an order |
 
 In `/docs`, expand GET /menu, choose Try it out, then Execute. Next expand POST /orders and submit:

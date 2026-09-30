@@ -2,7 +2,7 @@
 import os
 import streamlit as st
 from menu import format_price
-from order_display import ready_label
+from tracking_ui import show_tracking
 from web_client import APIError, request_api
 
 st.set_page_config(page_title="BiteBox | Fresh food, fast", page_icon="🍔", layout="wide")
@@ -76,35 +76,10 @@ with trolley_column:
             try:order=request_api("POST","/checkout",json={"items":items})
             except APIError as error:st.error(str(error))
             else:
+                st.session_state.setdefault("tracking_codes", {})[order["tracking_code"]] = order["order_id"]
                 st.session_state["trolley"]={};st.session_state["order_notice"]=(f"Order #{order['order_id']} placed with {len(order['items'])} item type(s) — {format_price(order['total_pence'])}.");st.rerun()
     else:st.markdown('<div class="empty"><span>🛒</span>Your trolley is empty.<br>Add something delicious to get started.</div></div>',unsafe_allow_html=True)
 
 st.markdown('<div class="kicker">Order tracking</div><div class="section-title">From kitchen to collection</div><div class="section-copy">This view refreshes automatically while food is being prepared.</div>',unsafe_allow_html=True)
-orders_tab,queue_tab=st.tabs(["Live orders","Kitchen timing"])
-@st.fragment(run_every="5s")
-def show_orders():
-    try:
-        orders=request_api("GET","/orders")
-        if orders:
-            st.dataframe([{"Order":f"#{o['id']}","Items":o["name"],"Qty":o["quantity"],"Total":format_price(o["total_pence"]),"Status":o["status"].title(),"Collection":ready_label(o)} for o in orders],hide_index=True,width="stretch")
-            with st.expander("Staff order controls"):
-                st.caption("Start cooking manually. Ready status is automatic; collection is confirmed by staff.")
-                next_status={"queued":"preparing","ready":"collected"};active=[o for o in orders if o["status"] in next_status]
-                for order in active:
-                    target=next_status[order["status"]]
-                    if st.button(f"Order #{order['id']}: mark as {target}",key=f"status-{order['id']}-{target}"):
-                        try:request_api("PATCH",f"/orders/{order['id']}/status",json={"status":target})
-                        except APIError as error:st.error(str(error))
-                        else:st.session_state["order_notice"]=f"Order #{order['id']} is now {target}.";st.rerun()
-                if not active:st.caption("There are no active orders to update.")
-        else:st.info("No orders yet. Your first order will appear here.")
-    except APIError as error:st.error(str(error))
-with orders_tab:show_orders()
-with queue_tab:
-    stations=st.slider("Open kitchen stations",min_value=1,max_value=10,value=2);st.caption("See how additional stations affect estimated waiting time.")
-    try:
-        queue=request_api("GET","/queue",params={"stations":stations});left,middle,right=st.columns(3);left.metric("Average wait",f"{queue['average_waiting_minutes']} min");middle.metric("Longest wait",f"{queue['maximum_waiting_minutes']} min");right.metric("Queue cleared",f"{queue['all_ready_after_minutes']} min")
-        if queue["schedule"]:st.dataframe(queue["schedule"],hide_index=True,width="stretch")
-        else:st.info("No queued orders to simulate.")
-    except APIError as error:st.error(str(error))
+show_tracking()
 st.markdown('<div class="footer"><strong>BiteBox</strong> · Educational ordering simulation · No payments or real deliveries</div>',unsafe_allow_html=True)

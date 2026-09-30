@@ -4,11 +4,12 @@
 from contextlib import asynccontextmanager
 
 # Standard library imports
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import Depends, FastAPI, HTTPException, Query
 from pydantic import BaseModel, ConfigDict, Field
 
 # Local imports
 from kitchen import simulate_queue
+from staff_auth import require_staff
 
 from database import (
     DATABASE_PATH, InsufficientStockError, ItemNotFoundError,
@@ -44,6 +45,11 @@ class CheckoutRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     items: list[TrolleyItemRequest] = Field(min_length=1, max_length=20)
 
+
+class TrackingRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    tracking_code: str = Field(strict=True, min_length=1, max_length=128)
+
 # A function to create and configure the FastAPI application, including defining the lifespan context manager to initialise the database, 
 # and setting up the endpoints for home, menu, orders, and placing an order with appropriate error handling
 
@@ -74,12 +80,29 @@ def create_app(database_path=DATABASE_PATH):
     def menu_endpoint():
         return get_menu(database_path)
 
-    @application.get("/orders")
+    @application.middleware("http")
+    async def private_responses(request, call_next):
+        response = await call_next(request)
+        response.headers["Cache-Control"] = "no-store"
+        return response
+
+    @application.post("/track")
+    def track_endpoint(request: TrackingRequest):
+        orders = get_orders(database_path, tracking_code=request.tracking_code)
+        if not orders:
+            raise HTTPException(404, "Order not found. Check your tracking code.")
+        return orders[0]
+
+    @application.get("/staff/session", dependencies=[Depends(require_staff)])
+    def staff_session():
+        return {"authenticated": True}
+
+    @application.get("/orders", dependencies=[Depends(require_staff)])
     def orders_endpoint():
         return get_orders(database_path)
 
     # Read saved orders and simulate timing without changing stock or status.
-    @application.get("/queue")
+    @application.get("/queue", dependencies=[Depends(require_staff)])
     def queue_endpoint(stations: int = Query(default=2, ge=1, le=10)):
         try:
             return simulate_queue(get_orders(database_path), stations)
@@ -109,7 +132,7 @@ def create_app(database_path=DATABASE_PATH):
         except ValueError as error:
             raise HTTPException(status_code=422, detail=str(error)) from error
 
-    @application.patch("/orders/{order_id}/status")
+    @application.patch("/orders/{order_id}/status", dependencies=[Depends(require_staff)])
     def status_endpoint(order_id: int, update: StatusUpdateRequest):
         try:
             return update_order_status(order_id, update.status, database_path)

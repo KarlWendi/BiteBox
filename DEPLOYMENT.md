@@ -17,7 +17,19 @@ The website and API need running Python servers. GitHub Pages only serves static
 - TAKEAWAY_API_URL: an environment variable on the website tells it where the hosted API lives. localhost on a hosting server means that server, not your home computer.
 - TAKEAWAY_DATABASE_PATH: optionally points the API at a database on persistent storage. When omitted, it uses restaurant.db beside database.py, as before.
 
-## Hosting decision
+## Staff login and private tracking
+
+Set `TAKEAWAY_STAFF_USERNAME` and `TAKEAWAY_STAFF_PASSWORD` in the hosting service's secret environment settings. Choose a unique, randomly generated password of at least 16 characters. There is no default account: missing credentials or a shorter password keep staff routes locked. Never commit these values.
+
+For the two-service setup, configure credentials on the **API**. When `TAKEAWAY_TEMPORARY_DEMO=1`, the website runs its API in-process, so configure credentials on the **website service** instead (and on any separately accessible API you still run). Restart the relevant service after changing secrets. Use HTTPS for both public services because staff authentication uses HTTP Basic over the server-to-server connection.
+
+Staff sign in through the Staff tab. Credentials stay in that Streamlit session's server memory, with a one-hour UI login limit and explicit logout; they are supplied on each privileged request and are never cached globally. Changing the configured password revokes the previous credentials. This is a single shared staff account, not individual staff accounts or roles.
+
+Checkout returns a private random tracking code. Customers see only orders whose codes they hold, can save a code and enter it in a new session, and can remove an order from their session with Forget order. Codes are bearer secrets: anyone holding one can read that order. Only SHA-256 hashes are stored in SQLite; codes are sent in POST bodies, never URL query strings. Order responses use `Cache-Control: no-store`. Lost codes cannot be recovered; orders from before this update remain visible to staff only. Demo resets also remove tracked orders.
+
+`GET /orders`, `GET /queue`, `GET /staff/session`, and `PATCH /orders/{id}/status` require staff authentication. `POST /orders`, `POST /checkout`, `GET /menu`, and `POST /track` remain public; `/track` requires the private code. In API docs, use Authorize to supply staff credentials when testing protected routes.
+
+## Storage
 
 A free disposable demo can recreate its fictional database after server restarts. It must say clearly that data is temporary. A persistent version needs durable database storage. Render's persistent disks require a paid service; do not create paid resources without reviewing and accepting the cost.
 

@@ -7,14 +7,17 @@ from pathlib import Path
 from fastapi.testclient import TestClient
 
 from api import create_app
+from test_support import STAFF_AUTH, configure_staff
 
 
 class APITests(unittest.TestCase):
     def setUp(self):
+        configure_staff(self)
         folder = tempfile.TemporaryDirectory()
         self.addCleanup(folder.cleanup)
         self.path = Path(folder.name) / "api.db"
         self.client = self.enterContext(TestClient(create_app(self.path)))
+        self.client.auth = STAFF_AUTH
 
     def test_menu_can_be_read(self):
         response = self.client.get("/menu")
@@ -66,6 +69,7 @@ class APITests(unittest.TestCase):
     def test_orders_survive_a_new_application(self):
         self.client.post("/orders", json={"item_id": 3, "quantity": 4})
         with TestClient(create_app(self.path)) as restarted:
+            restarted.auth = STAFF_AUTH
             self.assertEqual(restarted.get("/menu").json()[2]["stock"], 11)
             self.assertEqual(restarted.get("/orders").json()[0]["total_pence"], 1796)
 
