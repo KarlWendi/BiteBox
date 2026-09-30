@@ -18,7 +18,7 @@ class WebsiteTests(unittest.TestCase):
                 raise APIError(response.json()['detail'])
             return response.json()
         self.mock = patch('web_client.request_api', side_effect=request)
-        self.mock.start()
+        self.request_mock = self.mock.start()
         self.app = AppTest.from_file(str(Path(__file__).with_name('website.py')), default_timeout=20).run()
     def tearDown(self):
         self.mock.stop()
@@ -72,6 +72,30 @@ class WebsiteTests(unittest.TestCase):
         self.assertFalse(self.app.exception)
         self.assertEqual(self.client.get('/orders').json()[0]['status'], 'preparing')
         self.assertIn('Order #1 is now preparing.', self.app.success[0].value)
+        self.assertEqual(self.app.dataframe[0].value.iloc[0]['Collection'], 'Ready in 3 minutes')
+
+    def test_collection_labels_render_for_order_states(self):
+        orders = [
+            dict(id=index, name='Fries', quantity=1, total_pence=199,
+                 status=status, estimated_ready_at=estimate)
+            for index, (status, estimate) in enumerate([
+                ('queued', None),
+                ('preparing', '2026-09-30 12:02:00'),
+                ('ready', '2026-09-30 11:59:00'),
+                ('collected', '2026-09-30 11:59:00'),
+            ], start=1)
+        ]
+        from datetime import datetime, timezone
+        original_request = self.request_mock.side_effect
+        def request(method, path, **kwargs):
+            return orders if path == '/orders' else original_request(method, path, **kwargs)
+        with patch('web_client.request_api', side_effect=request), patch('order_display.datetime') as clock:
+            clock.fromisoformat.side_effect = datetime.fromisoformat
+            clock.now.return_value = datetime(2026, 9, 30, 12, tzinfo=timezone.utc)
+            self.app.run()
+        self.assertFalse(self.app.exception)
+        self.assertEqual(self.app.dataframe[0].value['Collection'].tolist(),
+                         ['Waiting to start', 'Ready in 2 minutes', 'Ready now', 'Collected'])
 
     def test_customer_can_checkout_multiple_products(self):
         self.app.button[1].click().run()

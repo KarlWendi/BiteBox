@@ -2,6 +2,7 @@
 import os
 import streamlit as st
 from menu import format_price
+from order_display import ready_label
 from web_client import APIError, request_api
 
 st.set_page_config(page_title="BiteBox | Fresh food, fast", page_icon="🍔", layout="wide")
@@ -85,7 +86,7 @@ def show_orders():
     try:
         orders=request_api("GET","/orders")
         if orders:
-            st.dataframe([{"Order":f"#{o['id']}","Items":o["name"],"Qty":o["quantity"],"Total":format_price(o["total_pence"]),"Status":o["status"].title(),"Ready estimate (UTC)":o.get("estimated_ready_at") or "Waiting to start"} for o in orders],hide_index=True,width="stretch")
+            st.dataframe([{"Order":f"#{o['id']}","Items":o["name"],"Qty":o["quantity"],"Total":format_price(o["total_pence"]),"Status":o["status"].title(),"Collection":ready_label(o)} for o in orders],hide_index=True,width="stretch")
             with st.expander("Staff order controls"):
                 st.caption("Start cooking manually. Ready status is automatic; collection is confirmed by staff.")
                 next_status={"queued":"preparing","ready":"collected"};active=[o for o in orders if o["status"] in next_status]

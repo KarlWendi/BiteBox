@@ -51,7 +51,7 @@ The hosted demo is self-contained. When `TAKEAWAY_TEMPORARY_DEMO=1`, the website
 
 Add two different products, confirm that stock has not changed, remove and re-add a product, then check out. The result should be one order containing two line items, with stock deducted only at checkout. Try a trolley where one product exceeds available stock: the entire checkout is rejected. Stop the API to see the friendly connection error, then restart it. Automated tests use temporary databases and verify the trolley, transaction rollback, migration, status progression and queue timing.
 
-To demonstrate automatic readiness, place an order and use **mark as preparing**. The table shows its UTC ready estimate. Leave the page open: it checks every five seconds and changes the status to **ready** after the calculated preparation duration. **Mark as collected** remains manual because the software cannot know when a customer physically receives the food.
+To demonstrate automatic readiness, place an order and use **mark as preparing**. The Collection column shows a countdown such as **Ready in 2 minutes**, rounding partial minutes up, then **Ready now** when the estimate is reached. Queued orders show **Waiting to start** and collected orders show **Collected**. Leave the page open: it checks every five seconds and changes the status to **ready** after the calculated preparation duration. **Mark as collected** remains manual because the software cannot know when a customer physically receives the food.
 
 This remains an educational simulation with no payment processing, customer accounts or authentication.
 
