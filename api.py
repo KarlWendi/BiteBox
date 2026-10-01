@@ -10,6 +10,7 @@ from pydantic import BaseModel, ConfigDict, Field
 # Local imports
 from kitchen import simulate_queue
 from staff_auth import require_staff
+from accounts import account_router, optional_account, require_account
 
 from database import (
     DATABASE_PATH, InsufficientStockError, ItemNotFoundError,
@@ -66,6 +67,8 @@ def create_app(database_path=DATABASE_PATH):
         version="0.5.0",
         lifespan=lifespan,
     )
+    application.state.database_path = database_path
+    application.include_router(account_router())
 
 # Define the endpoints for the FastAPI application, including the home endpoint that returns a welcome message and documentation link,
 # the menu endpoint that returns the current menu items, the orders endpoint that returns all saved orders, and the order endpoint
@@ -101,6 +104,10 @@ def create_app(database_path=DATABASE_PATH):
     def orders_endpoint():
         return get_orders(database_path)
 
+    @application.get('/me/orders')
+    def my_orders(user=Depends(require_account)):
+        return get_orders(database_path, customer_id=user['id'])
+
     # Read saved orders and simulate timing without changing stock or status.
     @application.get("/queue", dependencies=[Depends(require_staff)])
     def queue_endpoint(stations: int = Query(default=2, ge=1, le=10)):
@@ -110,20 +117,21 @@ def create_app(database_path=DATABASE_PATH):
             raise HTTPException(status_code=409, detail=str(error)) from error
 
     @application.post("/orders", status_code=201)
-    def order_endpoint(order: OrderRequest):
+    def order_endpoint(order: OrderRequest, user=Depends(optional_account)):
         try:
-            return place_order(order.item_id, order.quantity, database_path)
+            return place_order(order.item_id, order.quantity, database_path, customer_id=user['id'] if user else None)
         except ItemNotFoundError as error:
             raise HTTPException(status_code=404, detail=str(error)) from error
         except InsufficientStockError as error:
             raise HTTPException(status_code=409, detail=str(error)) from error
 
     @application.post("/checkout", status_code=201)
-    def checkout_endpoint(request: CheckoutRequest):
+    def checkout_endpoint(request: CheckoutRequest, user=Depends(optional_account)):
         try:
             return checkout(
                 [item.model_dump() for item in request.items],
                 database_path,
+                customer_id=user['id'] if user else None,
             )
         except ItemNotFoundError as error:
             raise HTTPException(status_code=404, detail=str(error)) from error

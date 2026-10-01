@@ -1,6 +1,7 @@
 # A simple database module for a takeaway ordering system, providing functions to initialise the database, 
 # retrieve the menu, place orders, and retrieve all orders, with error handling for item not found and insufficient stock scenarios.
 import sqlite3
+import os
 import hashlib
 import secrets
 from datetime import datetime, timedelta, timezone
@@ -13,7 +14,7 @@ from kitchen import PREP_MINUTES
 
 
 # Keep the database beside this file, regardless of the terminal's folder.
-DATABASE_PATH = Path(__file__).resolve().with_name("restaurant.db")
+DATABASE_PATH = Path(os.environ.get("TAKEAWAY_DATABASE_PATH") or Path(__file__).resolve().with_name("restaurant.db"))
 INITIAL_STOCK = {1: 20, 2: 30, 3: 15, 4: 20, 5: 20, 6: 15, 7: 25, 8: 25, 9: 15, 10: 40, 11: 40, 12: 20}
 
 # Custom exceptions for specific error scenarios in the database operations, allowing the calling code to handle these cases appropriately.
@@ -36,6 +37,8 @@ def initialise_database(database_path=DATABASE_PATH):
     connection = connect(database_path)
     try:
         with connection:
+            from accounts import initialise_accounts
+            initialise_accounts(connection)
             connection.execute("""
                 CREATE TABLE IF NOT EXISTS products (
                     id INTEGER PRIMARY KEY,
@@ -83,6 +86,7 @@ def initialise_database(database_path=DATABASE_PATH):
                 "estimated_ready_at": "TEXT",
                 "status_updated_at": "TEXT",
                 "tracking_hash": "TEXT",
+                "customer_id": "INTEGER REFERENCES users(id)",
             }.items():
                 if column_name not in current_order_columns:
                     connection.execute(
@@ -139,11 +143,12 @@ def get_menu(database_path=DATABASE_PATH):
 
 # A function to place an order, validating the input, checking stock availability, updating the stock in the database,
 # and inserting a new order record, returning a dictionary with the order details or raising appropriate exceptions for errors.
-def place_order(item_id, quantity, database_path=DATABASE_PATH):
+def place_order(item_id, quantity, database_path=DATABASE_PATH, *, customer_id=None):
     try:
         order = checkout(
             [{"item_id": item_id, "quantity": quantity}],
             database_path,
+            customer_id=customer_id,
         )
     except InsufficientStockError as error:
         # Keep the original single-item interface and tests compatible.
@@ -160,7 +165,7 @@ def place_order(item_id, quantity, database_path=DATABASE_PATH):
     }
 
 
-def checkout(items, database_path=DATABASE_PATH):
+def checkout(items, database_path=DATABASE_PATH, *, customer_id=None):
     """Validate and save a complete trolley as one atomic order."""
     if type(items) is not list or not items:
         raise ValueError("The trolley must contain at least one item.")
@@ -203,8 +208,8 @@ def checkout(items, database_path=DATABASE_PATH):
             total = sum(line["total_pence"] for line in lines)
             tracking_code = secrets.token_urlsafe(32)
             result = connection.execute(
-                "INSERT INTO orders (total_pence, tracking_hash) VALUES (?, ?)",
-                (total, hashlib.sha256(tracking_code.encode()).hexdigest()),
+                "INSERT INTO orders (total_pence, tracking_hash, customer_id) VALUES (?, ?, ?)",
+                (total, hashlib.sha256(tracking_code.encode()).hexdigest(), customer_id),
             )
             order_id = result.lastrowid
             for line in lines:
@@ -233,12 +238,14 @@ def checkout(items, database_path=DATABASE_PATH):
 
 # A function to retrieve all saved orders from the database, returning a list of dictionaries representing each order,
 # including its ID, item ID, name, quantity, total price in pence, status, and creation timestamp.
-def get_orders(database_path=DATABASE_PATH, *, tracking_code=None):
+def get_orders(database_path=DATABASE_PATH, *, tracking_code=None, customer_id=None):
     connection = connect(database_path)
     try:
         with connection:
             _mark_elapsed_orders_ready(connection)
-        if tracking_code is None:
+        if customer_id is not None:
+            rows = connection.execute('SELECT * FROM orders WHERE customer_id = ? ORDER BY id', (customer_id,)).fetchall()
+        elif tracking_code is None:
             rows = connection.execute("SELECT * FROM orders ORDER BY id").fetchall()
         else:
             rows = connection.execute(

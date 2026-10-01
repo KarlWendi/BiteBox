@@ -23,7 +23,32 @@ Set `TAKEAWAY_STAFF_USERNAME` and `TAKEAWAY_STAFF_PASSWORD` in the hosting servi
 
 For the two-service setup, configure credentials on the **API**. When `TAKEAWAY_TEMPORARY_DEMO=1`, the website runs its API in-process, so configure credentials on the **website service** instead (and on any separately accessible API you still run). Restart the relevant service after changing secrets. Use HTTPS for both public services because staff authentication uses HTTP Basic over the server-to-server connection.
 
-Staff sign in through the Staff tab. Credentials stay in that Streamlit session's server memory, with a one-hour UI login limit and explicit logout; they are supplied on each privileged request and are never cached globally. Changing the configured password revokes the previous credentials. This is a single shared staff account, not individual staff accounts or roles.
+The legacy shared staff login remains available through the Staff tab. Credentials stay in that Streamlit session's server memory, with a one-hour UI login limit and explicit logout. Individual staff accounts are also available through the account controls described below.
+
+## Customer and administrator accounts
+
+Customers use **Your account → Create a customer account**, then sign in before checkout to save orders to their account. Usernames contain 3–40 letters, numbers, dots, hyphens or underscores; passwords contain 12–128 characters. Signed-in users can view their own order history, change their password and sign out. Guest checkout and private tracking codes remain available. Guest orders are not automatically transferred to an account.
+
+Before the first startup with accounts enabled, set these secret environment variables on the service running the API:
+
+- `TAKEAWAY_ADMIN_USERNAME`: your chosen administrator username.
+- `TAKEAWAY_ADMIN_PASSWORD`: a unique password of 16–128 characters.
+
+For embedded demo mode (`TAKEAWAY_TEMPORARY_DEMO=1`), set them on the website service. For a separate API, set them on the API service. Deploy the updated website and API together. There is no default admin password and public registration always creates a customer.
+
+Sign in through **Your account** using the administrator credentials. **Administrator controls** provides account access management, individual staff account creation and menu stock updates. The **Staff** tab provides kitchen order status controls for both staff and administrators.
+
+| Role | Controls |
+| --- | --- |
+| Customer | Checkout, own order history, password change, sign out |
+| Staff | Customer controls plus kitchen orders and queue |
+| Administrator | Staff controls plus create staff, enable/disable non-admin accounts, replace product stock |
+
+The initial administrator is created once. Restarts do not overwrite its password or create more administrators; use the signed-in password-change form to change the password. The admin account cannot be disabled in these controls. Store its password securely: there is no password recovery flow yet.
+
+Passwords are salted and hashed. Login sessions expire after one hour; signing out revokes that session, and changing a password or disabling an account revokes all its sessions. Login attempts are rate limited. Permissions and order ownership are checked by the API, not just by hiding buttons.
+
+Accounts and order history use the same SQLite database. `TAKEAWAY_DATABASE_PATH` selects its location; the parent directory must already exist and be writable. Use persistent storage to retain accounts across hosting restarts. The temporary public demo can lose accounts as well as orders when its storage resets.
 
 Checkout returns a private random tracking code. Customers see only orders whose codes they hold, can save a code and enter it in a new session, and can remove an order from their session with Forget order. Codes are bearer secrets: anyone holding one can read that order. Only SHA-256 hashes are stored in SQLite; codes are sent in POST bodies, never URL query strings. Order responses use `Cache-Control: no-store`. Lost codes cannot be recovered; orders from before this update remain visible to staff only. Demo resets also remove tracked orders.
 

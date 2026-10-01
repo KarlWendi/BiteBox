@@ -141,10 +141,16 @@ python -m unittest -v
 
 ## Limitations
 
-There is no mixed-product basket, ingredient inventory, stock replenishment command, payment processing or real restaurant integration. Stock counts finished products. All saved orders remain queued until a later stage adds status changes. The maximum quantity of 50 is an invented demonstration rule. The API is a local educational demo without authentication or duplicate-request protection; it is not a production ordering service. GitHub hosts the source code, not a running Python API.
+The site supports a mixed-product trolley, order status changes, private tracking and authenticated customer, staff and administrator accounts. Stock counts finished products; administrators can replace available quantities. There is no ingredient inventory, payment processing, real restaurant integration or duplicate-request protection. The maximum quantity of 50 is an invented demonstration rule. This remains an educational simulation. GitHub hosts the source code; the public demo runs on a separate hosting service.
 
 ## Database and files
 
 `database.py` handles SQLite; `restaurant.py` handles the terminal. `ordering.py` supplies shared input validation, and `menu.py` supplies initial products and price formatting. `restaurant.db` is created automatically beside database.py on first run and is ignored by Git. Do not upload your database; someone cloning the code gets a fresh simulation.
 
 Restart `restaurant.py` after placing two burgers: stock should be 18 and the saved order should appear. Press Enter at the product prompt to exit without ordering. Initial products are inserted only when their IDs are missing: editing menu.py does not overwrite existing database prices or reset stock. New products without an entry in INITIAL_STOCK start with zero stock.
+
+## Customer and admin controls
+
+The website includes customer registration, sign-in, personal order history and password changes. Administrators can create staff accounts, enable or disable customer/staff access, update stock and operate the kitchen. Customers cannot access staff or administrator actions.
+
+See [account setup and deployment](DEPLOYMENT.md#customer-and-administrator-accounts) to create the initial administrator using hosting secrets. These features must be deployed before they appear on the public demo.

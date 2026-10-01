@@ -2,13 +2,19 @@
 import os
 import secrets
 
-from fastapi import Depends, HTTPException
+from fastapi import Depends, HTTPException, Request
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 
 basic = HTTPBasic(auto_error=False)
 
 
-def require_staff(credentials: HTTPBasicCredentials | None = Depends(basic)):
+def require_staff(request: Request, credentials: HTTPBasicCredentials | None = Depends(basic)):
+    if request.headers.get('Authorization', '').lower().startswith('bearer '):
+        from accounts import session_user
+        user = session_user(request)
+        if user['role'] not in ('admin', 'staff'):
+            raise HTTPException(403, 'Staff access required.')
+        return user
     username = os.environ.get("TAKEAWAY_STAFF_USERNAME", "")
     password = os.environ.get("TAKEAWAY_STAFF_PASSWORD", "")
     if not username or len(password) < 16:

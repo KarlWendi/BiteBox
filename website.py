@@ -3,6 +3,7 @@ import os
 import streamlit as st
 from menu import format_price
 from tracking_ui import show_tracking
+from account_ui import show_account, account_headers
 from web_client import APIError, request_api
 
 st.set_page_config(page_title="BiteBox | Fresh food, fast", page_icon="🍔", layout="wide")
@@ -73,13 +74,15 @@ with trolley_column:
                 if st.button(f"Remove {item['name']}",key=f"remove-{product_id}",width="stretch"):del st.session_state["trolley"][product_id];st.rerun()
         if st.button("Checkout",type="primary",width="stretch"):
             items=[{"item_id":product_id,"quantity":amount} for product_id,amount in trolley.items()]
-            try:order=request_api("POST","/checkout",json={"items":items})
+            try:order=request_api("POST","/checkout",json={"items":items},headers=account_headers())
             except APIError as error:st.error(str(error))
             else:
-                st.session_state.setdefault("tracking_codes", {})[order["tracking_code"]] = order["order_id"]
+                if not st.session_state.get('account_session'):
+                    st.session_state.setdefault("tracking_codes", {})[order["tracking_code"]] = order["order_id"]
                 st.session_state["trolley"]={};st.session_state["order_notice"]=(f"Order #{order['order_id']} placed with {len(order['items'])} item type(s) — {format_price(order['total_pence'])}.");st.rerun()
     else:st.markdown('<div class="empty"><span>🛒</span>Your trolley is empty.<br>Add something delicious to get started.</div></div>',unsafe_allow_html=True)
 
 st.markdown('<div class="kicker">Order tracking</div><div class="section-title">From kitchen to collection</div><div class="section-copy">This view refreshes automatically while food is being prepared.</div>',unsafe_allow_html=True)
+show_account()
 show_tracking()
 st.markdown('<div class="footer"><strong>BiteBox</strong> · Educational ordering simulation · No payments or real deliveries</div>',unsafe_allow_html=True)

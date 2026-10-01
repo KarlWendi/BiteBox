@@ -7,6 +7,7 @@ from menu import format_price
 from order_display import ready_label
 import web_client
 from web_client import APIError
+from account_ui import account_headers
 
 
 def order_table(orders):
@@ -18,8 +19,18 @@ def order_table(orders):
 
 @st.fragment(run_every="5s")
 def customer_orders():
+    if st.session_state.get('account_session'):
+        try:
+            orders = web_client.request_api('GET', '/me/orders', headers=account_headers())
+        except APIError as error:
+            st.error(str(error))
+        else:
+            if orders:
+                order_table(orders)
+            else:
+                st.info('Your account has no orders yet.')
     codes = st.session_state.get("tracking_codes", {})
-    if not codes:
+    if not codes and not st.session_state.get('account_session'):
         st.info("Place an order or enter your private tracking code to follow its progress.")
     for code, order_id in list(codes.items()):
         try:
@@ -37,12 +48,13 @@ def customer_orders():
 
 @st.fragment(run_every="5s")
 def staff_orders():
-    if time.time() >= st.session_state.get("staff_expires", 0):
+    account = st.session_state.get('account_session')
+    if not account and time.time() >= st.session_state.get("staff_expires", 0):
         st.session_state.pop("staff_auth", None)
         st.rerun()
-    auth = st.session_state["staff_auth"]
+    access = {'headers': account_headers()} if account else {'auth': st.session_state['staff_auth']}
     try:
-        orders = web_client.request_api("GET", "/orders", auth=auth)
+        orders = web_client.request_api("GET", "/orders", **access)
     except APIError as error:
         st.error(str(error))
         return
@@ -56,7 +68,7 @@ def staff_orders():
         target = next_status.get(order["status"])
         if target and st.button(f"Order #{order['id']}: mark as {target}", key=f"status-{order['id']}-{target}"):
             try:
-                web_client.request_api("PATCH", f"/orders/{order['id']}/status", json={"status": target}, auth=auth)
+                web_client.request_api("PATCH", f"/orders/{order['id']}/status", json={"status": target}, **access)
             except APIError as error:
                 st.error(str(error))
             else:
@@ -64,7 +76,7 @@ def staff_orders():
                 st.rerun()
     stations = st.slider("Open kitchen stations", min_value=1, max_value=10, value=2)
     try:
-        queue = web_client.request_api("GET", "/queue", params={"stations": stations}, auth=auth)
+        queue = web_client.request_api("GET", "/queue", params={"stations": stations}, **access)
         left, middle, right = st.columns(3)
         left.metric("Average wait", f"{queue['average_waiting_minutes']} min")
         middle.metric("Longest wait", f"{queue['maximum_waiting_minutes']} min")
@@ -90,6 +102,13 @@ def show_tracking():
         st.caption("Save your code to reopen your order later. Anyone with the code can view that order.")
         customer_orders()
     with staff_tab:
+        account = st.session_state.get('account_session')
+        if account:
+            if account['user']['role'] in ('staff', 'admin'):
+                staff_orders()
+            else:
+                st.info('Staff access is required for kitchen controls.')
+            return
         if time.time() >= st.session_state.get("staff_expires", 0):
             st.session_state.pop("staff_auth", None)
         if "staff_auth" not in st.session_state:
