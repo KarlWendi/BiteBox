@@ -1,6 +1,7 @@
 """Account sign-in, profile controls and administrator tools."""
 import streamlit as st
 import os
+import re
 import time
 from datetime import datetime, timezone
 from urllib.parse import urlencode
@@ -16,6 +17,19 @@ def account_headers():
 def clear_account():
     for key in ('account_session', 'tracking_codes', 'staff_auth', 'staff_expires', 'trolley', 'created_invitation', 'admin_invite_token'):
         st.session_state.pop(key, None)
+
+
+def valid_registration(username, password, confirm):
+    if not re.fullmatch(r'[a-z0-9][a-z0-9_.-]{2,39}', username.strip().lower()):
+        st.error('Choose a username with 3–40 characters. Start with a letter or number; use only letters, numbers, dots, hyphens or underscores.')
+        return False
+    if not 12 <= len(password) <= 128:
+        st.error('Use a password between 12 and 128 characters.')
+        return False
+    if password != confirm:
+        st.error('The passwords do not match.')
+        return False
+    return True
 
 
 def show_account():
@@ -67,7 +81,7 @@ def show_account():
             show_admin()
     else:
         st.caption('Sign in for saved order history. Staff and administrators can sign in here too, or you can order as a guest.')
-        with st.form('account_login', clear_on_submit=True):
+        with st.form('account_login'):
             username = st.text_input('Account username')
             password = st.text_input('Account password', type='password')
             if st.form_submit_button('Sign in'):
@@ -80,6 +94,7 @@ def show_account():
                     st.session_state.pop('staff_auth', None)
                     st.session_state.pop('staff_expires', None)
                     st.rerun()
+        st.caption('New administrator? Ask an existing administrator for an invitation link. Public registration creates a customer account.')
         if st.button("Don't have an account? Create a customer account", type='tertiary'):
             st.session_state['account_page'] = 'register'
             st.rerun()
@@ -91,16 +106,12 @@ def show_registration():
         st.session_state['account_page'] = True
         st.rerun()
     st.caption('Username: 3–40 letters, numbers, dots, hyphens or underscores. Password: 12–128 characters.')
-    with st.form('register_customer', clear_on_submit=True):
+    with st.form('register_customer'):
         username = st.text_input('Choose a username')
         password = st.text_input('Choose a password', type='password', help='Use at least 12 characters.')
         confirm = st.text_input('Confirm password', type='password')
         if st.form_submit_button('Create account'):
-            if not 12 <= len(password) <= 128:
-                st.error('Use a password between 12 and 128 characters.')
-            elif password != confirm:
-                st.error('The passwords do not match.')
-            else:
+            if valid_registration(username, password, confirm):
                 try:
                     web_client.request_api('POST', '/auth/register', json={'username': username, 'password': password})
                 except APIError as error:
@@ -178,15 +189,18 @@ def show_invitations():
         except APIError as error:
             st.error(str(error))
     created = st.session_state.get('created_invitation')
-    if created:
-        base = os.environ.get('TAKEAWAY_WEBSITE_URL', 'https://takeaway-ordering-demo.onrender.com/').rstrip('/') + '/'
-        st.code(base + '?' + urlencode({'admin_invite': created['token']}), language=None)
-        st.caption('Copy this link now. It is not recoverable after you sign out.')
     try:
         invitations = web_client.request_api('GET', '/admin/invitations', headers=account_headers())
     except APIError as error:
         st.error(str(error))
         return
+    if created and not any(i['id'] == created['id'] and not i['used_at'] and not i['revoked'] and i['expires_at'] > time.time() for i in invitations):
+        st.session_state.pop('created_invitation', None)
+        created = None
+    if created:
+        base = os.environ.get('TAKEAWAY_WEBSITE_URL', 'https://takeaway-ordering-demo.onrender.com/').rstrip('/') + '/'
+        st.code(base + '?' + urlencode({'admin_invite': created['token']}), language=None)
+        st.caption('Copy this link now. It is not recoverable after you sign out.')
     for invitation in invitations:
         if invitation['used_at'] or invitation['revoked'] or invitation['expires_at'] <= time.time():
             continue
@@ -207,18 +221,24 @@ def show_invitation_registration():
     st.title('Create your administrator account')
     st.caption('Use the invitation from your administrator to create your own sign-in. Username: 3–40 letters, numbers, dots, hyphens or underscores. Password: 12–128 characters.')
     if st.session_state.get('account_session'):
-        st.info('You are already signed in. Sign out through Your account before accepting an invitation for a new account.')
+        st.info('You are already signed in. Sign out below to create a separate administrator account. Your invitation will stay open.')
+        if st.button('Sign out and continue with invitation'):
+            try:
+                web_client.request_api('POST', '/auth/logout', headers=account_headers())
+            except APIError as error:
+                st.error(str(error))
+            else:
+                token = st.session_state['admin_invite_token']
+                clear_account()
+                st.session_state['admin_invite_token'] = token
+                st.rerun()
     else:
-        with st.form('accept_admin_invitation', clear_on_submit=True):
+        with st.form('accept_admin_invitation'):
             username = st.text_input('Admin username')
             password = st.text_input('Admin password', type='password')
             confirm = st.text_input('Confirm admin password', type='password')
             if st.form_submit_button('Create administrator account'):
-                if not 12 <= len(password) <= 128:
-                    st.error('Use a password between 12 and 128 characters.')
-                elif password != confirm:
-                    st.error('The passwords do not match.')
-                else:
+                if valid_registration(username, password, confirm):
                     try:
                         web_client.request_api('POST', '/auth/accept-invitation', json={
                             'username': username, 'password': password,

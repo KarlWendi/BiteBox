@@ -32,6 +32,60 @@ class AccountWebsiteTests(unittest.TestCase):
         self.login('invitedadmin')
         self.assertTrue(any(b.label == 'Create admin invitation' for b in self.app.button))
 
+    def test_signed_in_invitation_keeps_link_after_logout(self):
+        self.login('owner')
+        self.click('Create admin invitation')
+        token = self.app.session_state['created_invitation']['token']
+        self.app.query_params['admin_invite'] = token
+        self.app.run()
+        self.click('Sign out and continue with invitation')
+        self.assertEqual(self.app.session_state['admin_invite_token'], token)
+        self.fill('Admin username', 'secondadmin')
+        self.fill('Admin password', PASSWORD)
+        self.fill('Confirm admin password', PASSWORD)
+        self.click('Create administrator account')
+        self.login('secondadmin')
+        self.assertTrue(any(b.label == 'Create admin invitation' for b in self.app.button))
+
+    def test_registration_errors_preserve_details_for_correction(self):
+        self.open_registration()
+        self.fill('Choose a username', 'bad name')
+        self.fill('Choose a password', PASSWORD)
+        self.fill('Confirm password', PASSWORD)
+        self.click('Create account')
+        self.assertIn('Choose a username', self.app.error[0].value)
+        self.assertEqual(next(f.value for f in self.app.text_input if f.label == 'Choose a username'), 'bad name')
+        self.fill('Choose a username', 'owner')
+        self.click('Create account')
+        self.assertTrue(self.app.error)
+        self.fill('Choose a username', 'correctedcustomer')
+        self.click('Create account')
+        self.assertTrue(any('Account created' in n.value for n in self.app.success))
+        self.login('correctedcustomer')
+        self.assertTrue(any(b.label == 'Sign out' for b in self.app.button))
+
+    def test_invitation_error_can_be_corrected_and_used_link_disappears(self):
+        self.login('owner')
+        self.click('Create admin invitation')
+        token = self.app.session_state['created_invitation']['token']
+        self.app.query_params['admin_invite'] = token
+        self.app.run()
+        self.click('Sign out and continue with invitation')
+        self.fill('Admin username', 'owner')
+        self.fill('Admin password', PASSWORD)
+        self.fill('Confirm admin password', PASSWORD)
+        self.click('Create administrator account')
+        self.assertIn('unavailable', self.app.error[0].value)
+        self.fill('Admin username', 'correctedadmin')
+        self.click('Create administrator account')
+        self.login('correctedadmin')
+        self.click('Create admin invitation')
+        invitation = self.app.session_state['created_invitation']
+        self.client.post('/auth/accept-invitation', json={
+            'token': invitation['token'], 'username': 'anotheradmin', 'password': PASSWORD})
+        self.app.run()
+        self.assertFalse(any('admin_invite=' in code.value for code in self.app.code))
+
     def setUp(self):
         self.enterContext(patch.dict(os.environ, {
             'TAKEAWAY_ADMIN_USERNAME': 'owner',

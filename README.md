@@ -14,7 +14,7 @@ BiteBox brings these steps together in an interactive demonstration. Customers c
 
 BiteBox was developed as a guided Python learning and portfolio project to explore how customer ordering, inventory and kitchen capacity connect. It grew from a terminal ordering simulator into a publicly accessible website, providing practical experience with Streamlit interfaces, FastAPI services, SQLite transactions, account permissions, automated testing and deployment. Development was supported by AI assistance.
 
-The project also explores how the number of kitchen stations affects waiting times through a simplified queue simulation. Its estimates use fictional preparation times; actual order status changes are controlled by staff. BiteBox demonstrates these workflows with fictional data and does not process payments or fulfil real food orders.
+The project also explores how the number of kitchen stations affects waiting times through a simplified queue simulation. Its estimates use fictional preparation times; staff start preparation, the simulated preparation timer marks orders ready, and staff confirm collection. BiteBox demonstrates these workflows with fictional data and does not process payments or fulfil real food orders.
 
 ## Current stage: 8 — public website
 
