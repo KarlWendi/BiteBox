@@ -3,10 +3,15 @@ import os
 import streamlit as st
 from menu import format_price
 from tracking_ui import show_tracking, show_staff
-from account_ui import show_account, show_registration, account_headers
+from account_ui import show_account, show_registration, show_invitation_registration, account_headers
 from web_client import APIError, request_api
 
 st.set_page_config(page_title="BiteBox | Fresh food, fast", page_icon="🍔", layout="wide")
+# Remove the bearer invitation from the visible URL before rendering external assets.
+if 'admin_invite' in st.query_params:
+    st.session_state['admin_invite_token'] = st.query_params['admin_invite'][:128]
+    del st.query_params['admin_invite']
+    st.session_state['staff_page'] = False
 st.markdown("""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;700&family=Outfit:wght@600;700;800&display=swap');
@@ -37,6 +42,9 @@ button:focus-visible,a:focus-visible,input:focus-visible {outline:3px solid #1f6
 .hero{padding:1.8rem 2rem}.hero h1{font-size:clamp(2rem,5vw,3.2rem)}.hero-points{flex-wrap:wrap;gap:.7rem}.section-nav{display:flex;flex-wrap:wrap;gap:1.2rem;padding:.8rem 0}.section-nav a{color:#1f6b45;font-weight:700}.order-now{display:inline-block;margin-top:1rem;background:white;color:#16442d!important;padding:.65rem 1rem;border-radius:10px;font-weight:700;text-decoration:none}
 @media(max-width:600px){.hero{padding:1.4rem}.block-container{padding-left:1rem;padding-right:1rem}.nav-note{font-size:.75rem}}
 </style>''', unsafe_allow_html=True)
+if st.session_state.get('admin_invite_token'):
+    show_invitation_registration()
+    st.stop()
 if st.session_state.get('staff_page', False):
     st.title('BiteBox · Staff')
     if st.button('← Back to your order', type='tertiary'):

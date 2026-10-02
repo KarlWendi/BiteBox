@@ -47,6 +47,10 @@ def initialise_accounts(connection):
     connection.execute("""CREATE TABLE IF NOT EXISTS login_attempts (
         bucket TEXT PRIMARY KEY, count INTEGER NOT NULL, expires_at REAL NOT NULL)""")
     username = os.environ.get('TAKEAWAY_ADMIN_USERNAME', '')
+    connection.execute("""CREATE TABLE IF NOT EXISTS admin_invitations (
+        id INTEGER PRIMARY KEY, token_hash TEXT NOT NULL UNIQUE,
+        created_by INTEGER NOT NULL REFERENCES users(id), expires_at REAL NOT NULL,
+        used_at REAL, revoked INTEGER NOT NULL DEFAULT 0)""")
     password = os.environ.get('TAKEAWAY_ADMIN_PASSWORD', '')
     if not username and not password:
         return
@@ -117,6 +121,10 @@ class LoginRequest(BaseModel):
     password: str = Field(min_length=1, max_length=128)
 
 
+class InvitationRegistration(Credentials):
+    token: str = Field(min_length=20, max_length=128)
+
+
 class PasswordChange(BaseModel):
     model_config = ConfigDict(extra='forbid')
     current_password: str = Field(min_length=1, max_length=128)
@@ -150,6 +158,56 @@ def throttle(connection, buckets):
 
 def account_router():
     router = APIRouter()
+
+    @router.post('/admin/invitations', status_code=201)
+    def invite_admin(request: Request, user=Depends(require_admin)):
+        token = secrets.token_urlsafe(32)
+        expires = time.time() + 86400
+        with closing(connect(request.app.state.database_path)) as connection:
+            throttle(connection, [('invite:' + str(user['id']), 20)])
+            with connection:
+                cursor = connection.execute(
+                    'INSERT INTO admin_invitations (token_hash, created_by, expires_at) VALUES (?, ?, ?)',
+                    (hashlib.sha256(token.encode()).hexdigest(), user['id'], expires))
+        return {'id': cursor.lastrowid, 'token': token, 'expires_at': expires}
+
+    @router.get('/admin/invitations', dependencies=[Depends(require_admin)])
+    def invitations(request: Request):
+        with closing(connect(request.app.state.database_path)) as connection:
+            rows = connection.execute('SELECT id, created_by, expires_at, used_at, revoked FROM admin_invitations ORDER BY id DESC').fetchall()
+        return [dict(row) for row in rows]
+
+    @router.delete('/admin/invitations/{invitation_id}', dependencies=[Depends(require_admin)])
+    def revoke_invitation(invitation_id: int, request: Request):
+        with closing(connect(request.app.state.database_path)) as connection, connection:
+            result = connection.execute('UPDATE admin_invitations SET revoked = 1 WHERE id = ?', (invitation_id,))
+            if not result.rowcount:
+                raise HTTPException(404, 'Invitation not found.')
+        return {'revoked': True}
+
+    @router.post('/auth/accept-invitation', status_code=201)
+    def accept_invitation(body: InvitationRegistration, request: Request):
+        username = normalise_username(body.username)
+        digest = hashlib.sha256(body.token.encode()).hexdigest()
+        with closing(connect(request.app.state.database_path)) as connection:
+            address = request.client.host if request.client else 'unknown'
+            throttle(connection, [('accept-invite:' + address, 30)])
+            # The account and invitation consumption commit together, even for concurrent requests.
+            with connection:
+                connection.execute('BEGIN IMMEDIATE')
+                invitation = connection.execute("""SELECT i.id FROM admin_invitations i
+                    JOIN users u ON u.id = i.created_by
+                    WHERE i.token_hash = ? AND i.expires_at > ? AND i.used_at IS NULL
+                    AND i.revoked = 0 AND u.active = 1 AND u.role = 'admin'""", (digest, time.time())).fetchone()
+                if not invitation:
+                    raise HTTPException(400, 'This invitation is invalid, expired, revoked or already used. Ask an administrator for a new link.')
+                try:
+                    cursor = connection.execute('INSERT INTO users (username, password_hash, role) VALUES (?, ?, ?)',
+                                                (username, password_hash(body.password), 'admin'))
+                except sqlite3.IntegrityError as error:
+                    raise HTTPException(409, 'That username is unavailable. Choose another username; your invitation is still valid.') from error
+                connection.execute('UPDATE admin_invitations SET used_at = ? WHERE id = ?', (time.time(), invitation['id']))
+                return {'id': cursor.lastrowid, 'username': username, 'role': 'admin', 'active': 1}
 
     def create_user(connection, credentials, role):
         username = normalise_username(credentials.username)

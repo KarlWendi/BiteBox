@@ -15,6 +15,23 @@ PASSWORD = 'account-ui-test-password'
 
 
 class AccountWebsiteTests(unittest.TestCase):
+    def test_admin_invitation_registration_and_login(self):
+        self.login('owner')
+        self.click('Create admin invitation')
+        invitation = self.app.session_state['created_invitation']
+        self.assertTrue(any('admin_invite=' in code.value for code in self.app.code))
+        self.click('Sign out')
+        self.app.query_params['admin_invite'] = invitation['token']
+        self.app.run()
+        self.assertNotIn('admin_invite', self.app.query_params)
+        self.fill('Admin username', 'invitedadmin')
+        self.fill('Admin password', PASSWORD)
+        self.fill('Confirm admin password', PASSWORD)
+        self.click('Create administrator account')
+        self.assertTrue(any('Administrator account created' in notice.value for notice in self.app.success))
+        self.login('invitedadmin')
+        self.assertTrue(any(b.label == 'Create admin invitation' for b in self.app.button))
+
     def setUp(self):
         self.enterContext(patch.dict(os.environ, {
             'TAKEAWAY_ADMIN_USERNAME': 'owner',

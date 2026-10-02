@@ -15,6 +15,50 @@ PASSWORD = 'a-long-test-password-123'
 
 
 class AccountTests(unittest.TestCase):
+    def test_invitation_permissions_single_use_and_private_storage(self):
+        self.register('customer')
+        customer = self.login('customer')
+        for headers, status in [({}, 401), (customer, 403)]:
+            self.assertEqual(self.client.post('/admin/invitations', headers=headers).status_code, status)
+        invitation = self.client.post('/admin/invitations', headers=self.admin).json()
+        self.assertNotIn('token', self.client.get('/admin/invitations', headers=self.admin).json()[0])
+        with closing(connect(self.path)) as connection:
+            stored = connection.execute('SELECT token_hash FROM admin_invitations').fetchone()[0]
+        self.assertNotEqual(stored, invitation['token'])
+        body = {'token': invitation['token'], 'username': 'newadmin', 'password': PASSWORD}
+        response = self.client.post('/auth/accept-invitation', json=body)
+        self.assertEqual(response.status_code, 201, response.text)
+        self.assertEqual(response.json()['role'], 'admin')
+        self.assertEqual(self.client.get('/admin/users', headers=self.login('newadmin')).status_code, 200)
+        body['username'] = 'anotheradmin'
+        self.assertEqual(self.client.post('/auth/accept-invitation', json=body).status_code, 400)
+
+    def test_expired_revoked_and_duplicate_username_invitations(self):
+        for condition in ('expired', 'revoked'):
+            invite = self.client.post('/admin/invitations', headers=self.admin).json()
+            if condition == 'expired':
+                with closing(connect(self.path)) as connection, connection:
+                    connection.execute('UPDATE admin_invitations SET expires_at = 0 WHERE id = ?', (invite['id'],))
+            else:
+                self.assertEqual(self.client.delete(f"/admin/invitations/{invite['id']}", headers=self.admin).status_code, 200)
+            self.assertEqual(self.client.post('/auth/accept-invitation', json={
+                'token': invite['token'], 'username': 'newadmin', 'password': PASSWORD}).status_code, 400)
+        invite = self.client.post('/admin/invitations', headers=self.admin).json()
+        body = {'token': invite['token'], 'username': 'owner', 'password': PASSWORD}
+        self.assertEqual(self.client.post('/auth/accept-invitation', json=body).status_code, 409)
+        body['username'] = 'newadmin'
+        self.assertEqual(self.client.post('/auth/accept-invitation', json=body).status_code, 201)
+
+    def test_concurrent_acceptance_creates_only_one_admin(self):
+        from concurrent.futures import ThreadPoolExecutor
+        invite = self.client.post('/admin/invitations', headers=self.admin).json()
+        def accept(username):
+            return self.client.post('/auth/accept-invitation', json={
+                'token': invite['token'], 'username': username, 'password': PASSWORD}).status_code
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            results = list(pool.map(accept, ['firstadmin', 'secondadmin']))
+        self.assertEqual(sorted(results), [201, 400])
+
     def setUp(self):
         self.enterContext(patch.dict(os.environ, {
             'TAKEAWAY_ADMIN_USERNAME': 'owner', 'TAKEAWAY_ADMIN_PASSWORD': PASSWORD,

@@ -27,6 +27,14 @@ The legacy shared staff login remains available through the Staff tab. Credentia
 
 ## Customer and administrator accounts
 
+### Invite another administrator
+
+Sign in as an existing administrator, open **Your account → Administrator controls**, and select **Create admin invitation**. Copy the displayed link and share it privately with the intended administrator. The recipient opens the link, chooses their own username/password, and then signs in normally. Public registration remains customer-only.
+
+Invitations expire after 24 hours and can be accepted once. Administrators can revoke pending invitations from the same screen. An unavailable username does not consume an invitation. The API stores only a hash of the token and atomically creates the account and consumes the invitation. Anyone holding an unused link can claim its admin access; share it only with the intended recipient. Do not post links publicly. The website removes the token from its visible URL after loading, but the initial URL may still exist in browser history or hosting logs.
+
+`TAKEAWAY_WEBSITE_URL` on the website service controls the invitation-link destination. It defaults to `https://takeaway-ordering-demo.onrender.com/`; set it to your website address for another deployment or `http://localhost:8501` for local testing. Invitations belong to the API/database that issued them. Temporary demo storage resets invalidate invitations and remove created accounts. The first administrator still requires the Render bootstrap settings below.
+
 Customers use **Don't have an account? Create one or sign in** at the top of the storefront to open the account page. After registering or signing in, **Back to your order** returns to the storefront with the trolley preserved. Signed-in visitors can reopen the page through **Your account**. Usernames contain 3–40 letters, numbers, dots, hyphens or underscores; passwords contain 12–128 characters. Signed-in users can view their own order history, change their password and sign out. Guest checkout and private tracking codes remain available. Guest orders are not automatically transferred to an account.
 
 Before the first startup with accounts enabled, set these secret environment variables on the service running the API:

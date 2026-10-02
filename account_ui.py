@@ -1,5 +1,9 @@
 """Account sign-in, profile controls and administrator tools."""
 import streamlit as st
+import os
+import time
+from datetime import datetime, timezone
+from urllib.parse import urlencode
 import web_client
 from web_client import APIError
 
@@ -10,7 +14,7 @@ def account_headers():
 
 
 def clear_account():
-    for key in ('account_session', 'tracking_codes', 'staff_auth', 'staff_expires', 'trolley'):
+    for key in ('account_session', 'tracking_codes', 'staff_auth', 'staff_expires', 'trolley', 'created_invitation', 'admin_invite_token'):
         st.session_state.pop(key, None)
 
 
@@ -109,6 +113,7 @@ def show_registration():
 
 def show_admin():
     with st.expander('Administrator controls'):
+        show_invitations()
         try:
             users = web_client.request_api('GET', '/admin/users', headers=account_headers())
             menu = web_client.request_api('GET', '/menu')
@@ -132,6 +137,7 @@ def show_admin():
                 else:
                     st.session_state['account_notice'] = 'Staff account created.'
                     st.rerun()
+
         for user in users:
             if user['role'] == 'admin':
                 continue
@@ -161,3 +167,70 @@ def show_admin():
                 else:
                     st.session_state['account_notice'] = 'Stock updated.'
                     st.rerun()
+
+
+def show_invitations():
+    st.subheader('Invite an administrator')
+    st.caption('Anyone with this link can create an administrator account. Share it privately with your intended recipient. It expires after 24 hours and works once.')
+    if st.button('Create admin invitation'):
+        try:
+            st.session_state['created_invitation'] = web_client.request_api('POST', '/admin/invitations', headers=account_headers())
+        except APIError as error:
+            st.error(str(error))
+    created = st.session_state.get('created_invitation')
+    if created:
+        base = os.environ.get('TAKEAWAY_WEBSITE_URL', 'https://takeaway-ordering-demo.onrender.com/').rstrip('/') + '/'
+        st.code(base + '?' + urlencode({'admin_invite': created['token']}), language=None)
+        st.caption('Copy this link now. It is not recoverable after you sign out.')
+    try:
+        invitations = web_client.request_api('GET', '/admin/invitations', headers=account_headers())
+    except APIError as error:
+        st.error(str(error))
+        return
+    for invitation in invitations:
+        if invitation['used_at'] or invitation['revoked'] or invitation['expires_at'] <= time.time():
+            continue
+        expires = datetime.fromtimestamp(invitation['expires_at'], timezone.utc).strftime('%d %b %Y %H:%M UTC')
+        st.caption(f"Invitation #{invitation['id']} · expires {expires}")
+        if st.button(f"Revoke invitation #{invitation['id']}"):
+            try:
+                web_client.request_api('DELETE', f"/admin/invitations/{invitation['id']}", headers=account_headers())
+            except APIError as error:
+                st.error(str(error))
+            else:
+                if created and created['id'] == invitation['id']:
+                    st.session_state.pop('created_invitation', None)
+                st.rerun()
+
+
+def show_invitation_registration():
+    st.title('Create your administrator account')
+    st.caption('Use the invitation from your administrator to create your own sign-in. Username: 3–40 letters, numbers, dots, hyphens or underscores. Password: 12–128 characters.')
+    if st.session_state.get('account_session'):
+        st.info('You are already signed in. Sign out through Your account before accepting an invitation for a new account.')
+    else:
+        with st.form('accept_admin_invitation', clear_on_submit=True):
+            username = st.text_input('Admin username')
+            password = st.text_input('Admin password', type='password')
+            confirm = st.text_input('Confirm admin password', type='password')
+            if st.form_submit_button('Create administrator account'):
+                if not 12 <= len(password) <= 128:
+                    st.error('Use a password between 12 and 128 characters.')
+                elif password != confirm:
+                    st.error('The passwords do not match.')
+                else:
+                    try:
+                        web_client.request_api('POST', '/auth/accept-invitation', json={
+                            'username': username, 'password': password,
+                            'token': st.session_state['admin_invite_token']})
+                    except APIError as error:
+                        st.error(str(error))
+                    else:
+                        st.session_state.pop('admin_invite_token', None)
+                        st.session_state['account_page'] = True
+                        st.session_state['account_notice'] = 'Administrator account created. Sign in with your new credentials.'
+                        st.rerun()
+    if st.button('Return to sign in', type='tertiary'):
+        st.session_state.pop('admin_invite_token', None)
+        st.session_state['account_page'] = True
+        st.rerun()
