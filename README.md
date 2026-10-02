@@ -6,7 +6,7 @@ An educational Python project exploring food ordering, inventory and kitchen wai
 
 ## The problem BiteBox addresses
 
-Taking a takeaway order involves more than choosing food: customers need to see what is available and follow their order, while staff need an organised view of incoming orders and control over preparation. When ordering, stock and kitchen updates are handled separately, it becomes easier to accept unavailable items or leave customers unsure about their order's progress.
+Taking a takeaway order involves more than choosing food. Customers need to see what is available and follow their order, while staff need an organised view of incoming orders and control over preparation. When ordering, stock and kitchen updates are handled separately, it becomes easier to accept unavailable items or leave customers unsure about their order's progress.
 
 BiteBox brings these steps together in an interactive demonstration. Customers can browse the menu, build a trolley, place an order and track its status. Stock is checked and reserved when an order is saved. Staff can manage kitchen progress, while administrators manage stock, staff access and invitations for additional administrators. Customer accounts provide personal order history, and guest ordering remains available.
 
