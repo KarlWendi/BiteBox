@@ -39,12 +39,18 @@ class AccountWebsiteTests(unittest.TestCase):
         next(button for button in self.app.button if button.label == label).click().run()
         self.assertFalse(self.app.exception)
 
+    def open_account(self):
+        if not ('account_page' in self.app.session_state and self.app.session_state['account_page']):
+            self.app.button(key='open_account').click().run()
+
     def login(self, username, password=PASSWORD):
+        self.open_account()
         self.fill('Account username', username)
         self.fill('Account password', password)
         self.click('Sign in')
 
     def register(self, username):
+        self.open_account()
         self.fill('Choose a username', username)
         self.fill('Choose a password', PASSWORD)
         self.fill('Confirm password', PASSWORD)
@@ -54,17 +60,21 @@ class AccountWebsiteTests(unittest.TestCase):
         self.register('alice')
         self.login('alice')
         self.assertFalse(any(button.label == 'Create staff account' for button in self.app.button))
+        self.click('← Back to your order')
         self.click('Add to trolley')
         self.click('Checkout')
         self.assertEqual(self.app.dataframe[0].value['Order'].tolist(), ['#1'])
         self.assertFalse(any('enter your private tracking code' in info.value for info in self.app.info))
+        self.open_account()
         self.click('Sign out')
         self.assertEqual(len(self.app.dataframe), 0)
         self.register('bob')
         self.login('bob')
         self.assertEqual(len(self.app.dataframe), 0)
+        self.open_account()
         self.click('Sign out')
         self.login('alice')
+        self.click('← Back to your order')
         self.assertEqual(self.app.dataframe[0].value['Order'].tolist(), ['#1'])
 
     def test_admin_stock_staff_creation_and_access_control(self):
@@ -84,12 +94,26 @@ class AccountWebsiteTests(unittest.TestCase):
         self.assertEqual(self.client.post('/auth/login', json={'username': 'helper', 'password': PASSWORD}).status_code, 401)
         self.click('Enable helper')
         self.client.post('/orders', json={'item_id': 1, 'quantity': 1})
+        self.open_account()
         self.click('Sign out')
         self.login('helper')
         self.assertFalse(any(button.label == 'Create staff account' for button in self.app.button))
+        self.click('← Back to your order')
         self.click('Order #1: mark as preparing')
 
+    def test_account_navigation_preserves_trolley(self):
+        self.click('Add to trolley')
+        self.assertEqual(self.app.session_state['trolley'], {1: 1})
+        self.register('alice')
+        self.assertFalse(any(b.label == 'Checkout' for b in self.app.button))
+        self.login('alice')
+        self.click('← Back to your order')
+        self.assertEqual(self.app.session_state['trolley'], {1: 1})
+        self.click('Checkout')
+        self.assertEqual(self.app.dataframe[0].value['Order'].tolist(), ['#1'])
+
     def test_password_validation_and_change(self):
+        self.open_account()
         self.fill('Choose a username', 'alice')
         self.fill('Choose a password', 'short')
         self.fill('Confirm password', 'short')

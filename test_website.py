@@ -36,7 +36,7 @@ class WebsiteTests(unittest.TestCase):
     def test_submit_refresh_and_station_changes(self):
         self.assertFalse(self.app.exception)
         self.app.number_input[0].set_value(2)
-        self.app.button[1].click().run()
+        next(b for b in self.app.button if b.label == 'Add to trolley').click().run()
         self.assertFalse(self.app.exception)
         self.assertEqual(self.client.get('/menu').json()[0]['stock'], 20)
 
@@ -48,14 +48,14 @@ class WebsiteTests(unittest.TestCase):
 
         self.assertIn('£7.98', self.app.success[0].value)
         self.assertEqual(self.client.get('/menu').json()[0]['stock'], 18)
-        self.app.button[0].click().run()
+        next(b for b in self.app.button if 'Refresh menu' in b.label).click().run()
         self.login()
         self.app.slider[0].set_value(3).run()
         self.assertEqual(len(self.client.get('/orders').json()), 1)
         self.assertEqual(self.client.get('/menu').json()[0]['stock'], 18)
     def test_insufficient_stock_does_not_create_order(self):
         self.app.number_input[0].set_value(21)
-        self.app.button[1].click().run()
+        next(b for b in self.app.button if b.label == 'Add to trolley').click().run()
         self.assertFalse(self.app.exception)
         self.assertEqual(
             self.app.error[0].value,
@@ -65,7 +65,7 @@ class WebsiteTests(unittest.TestCase):
         self.assertEqual(self.client.get('/menu').json()[0]['stock'], 20)
 
     def test_staff_can_advance_order_status(self):
-        self.app.button[1].click().run()
+        next(b for b in self.app.button if b.label == 'Add to trolley').click().run()
         checkout_button = next(
             button for button in self.app.button
             if button.label == 'Checkout'
@@ -110,7 +110,7 @@ class WebsiteTests(unittest.TestCase):
                          ['Waiting to start', 'Ready in 2 minutes', 'Ready now', 'Collected'])
 
     def test_customer_can_checkout_multiple_products(self):
-        self.app.button[1].click().run()
+        next(b for b in self.app.button if b.label == 'Add to trolley').click().run()
         self.app.selectbox[0].select(2).run()
         self.app.number_input[0].set_value(2)
         add_button = next(
@@ -143,7 +143,7 @@ class WebsiteTests(unittest.TestCase):
         self.assertEqual(len(self.app.dataframe), 0)
         self.assertEqual(len(self.app.slider), 0)
         self.assertFalse(any('mark as' in button.label for button in self.app.button))
-        self.app.button[1].click().run()
+        next(b for b in self.app.button if b.label == 'Add to trolley').click().run()
         next(button for button in self.app.button if button.label == 'Checkout').click().run()
         self.assertEqual(self.app.dataframe[0].value['Order'].tolist(), ['#2'])
         code = next(iter(self.app.session_state['tracking_codes']))

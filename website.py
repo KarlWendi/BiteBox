@@ -25,6 +25,24 @@ h1,h2,h3{font-family:'Outfit',sans-serif!important;letter-spacing:-.025em}[data-
 
 ICONS={"Burger":"🍔","Cheeseburger":"🧀","Chicken Burger":"🍗","Veggie Burger":"🌱","Fries":"🍟","Wrap":"🌯","Chicken Nuggets":"🍗","Onion Rings":"🧅","Side Salad":"🥗","Cola":"🥤","Bottled Water":"💧","Chocolate Milkshake":"🥛"}
 
+# Navigate within the same session so signing in never loses the customer's meal.
+st.markdown('''<style>
+.stButton>button[kind="tertiary"]{background:transparent;border:0;color:#1f6b45;text-decoration:underline;padding:0;min-height:1.8rem}
+</style>''', unsafe_allow_html=True)
+if st.session_state.get('account_page', False):
+    st.title('BiteBox · Your account')
+    if st.button('← Back to your order', type='tertiary'):
+        st.session_state['account_page'] = False
+        st.rerun()
+    st.caption('Your trolley is saved while you sign in or create an account.')
+    show_account()
+    st.stop()
+
+account_label = 'Your account' if st.session_state.get('account_session') else "Don't have an account? Create one or sign in"
+if st.button(account_label, type='tertiary', key='open_account'):
+    st.session_state['account_page'] = True
+    st.rerun()
+
 st.markdown("""<div class="site-nav"><div class="brand"><span class="brand-mark">B</span> BiteBox</div><div class="nav-note">Order online · Collect fresh</div></div><section class="hero"><span class="eyebrow">Freshly made · Ready fast</span><h1>Big flavour.<br>Zero fuss.</h1><p>Build your perfect order from our freshly prepared favourites, check out in seconds, and follow it from kitchen to collection.</p><div class="hero-points"><span>✓ Fresh ingredients</span><span>✓ Live order status</span><span>✓ Easy collection</span></div></section>""",unsafe_allow_html=True)
 if os.environ.get("TAKEAWAY_TEMPORARY_DEMO")=="1":st.info("Demo mode: orders are simulated, shared by visitors and may reset when the free service restarts.")
 notice=st.session_state.pop("order_notice",None)
@@ -83,6 +101,5 @@ with trolley_column:
     else:st.markdown('<div class="empty"><span>🛒</span>Your trolley is empty.<br>Add something delicious to get started.</div></div>',unsafe_allow_html=True)
 
 st.markdown('<div class="kicker">Order tracking</div><div class="section-title">From kitchen to collection</div><div class="section-copy">This view refreshes automatically while food is being prepared.</div>',unsafe_allow_html=True)
-show_account()
 show_tracking()
 st.markdown('<div class="footer"><strong>BiteBox</strong> · Educational ordering simulation · No payments or real deliveries</div>',unsafe_allow_html=True)

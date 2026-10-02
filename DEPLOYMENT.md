@@ -27,7 +27,7 @@ The legacy shared staff login remains available through the Staff tab. Credentia
 
 ## Customer and administrator accounts
 
-Customers use **Your account → Create a customer account**, then sign in before checkout to save orders to their account. Usernames contain 3–40 letters, numbers, dots, hyphens or underscores; passwords contain 12–128 characters. Signed-in users can view their own order history, change their password and sign out. Guest checkout and private tracking codes remain available. Guest orders are not automatically transferred to an account.
+Customers use **Don't have an account? Create one or sign in** at the top of the storefront to open the account page. After registering or signing in, **Back to your order** returns to the storefront with the trolley preserved. Signed-in visitors can reopen the page through **Your account**. Usernames contain 3–40 letters, numbers, dots, hyphens or underscores; passwords contain 12–128 characters. Signed-in users can view their own order history, change their password and sign out. Guest checkout and private tracking codes remain available. Guest orders are not automatically transferred to an account.
 
 Before the first startup with accounts enabled, set these secret environment variables on the service running the API:
 
