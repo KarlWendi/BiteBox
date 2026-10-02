@@ -28,6 +28,7 @@ ICONS={"Burger":"🍔","Cheeseburger":"🧀","Chicken Burger":"🍗","Veggie Bur
 # Navigate within the same session so signing in never loses the customer's meal.
 st.markdown('''<style>
 .stButton>button[kind="tertiary"]{background:transparent;border:0;color:#1f6b45;text-decoration:underline;padding:0;min-height:1.8rem}
+[data-testid="stWidgetLabel"], [data-testid="stWidgetLabel"] p {color:#17211b!important;font-weight:700!important}
 </style>''', unsafe_allow_html=True)
 if st.session_state.get('account_page', False):
     registering = st.session_state['account_page'] == 'register' and not st.session_state.get('account_session')
