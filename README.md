@@ -1,8 +1,20 @@
-# Takeaway Ordering Simulator
+# BiteBox — Takeaway Ordering Application
 
 An educational Python project exploring food ordering, inventory and kitchen waiting times. Uses fictional data and is not affiliated with McDonald's or any other restaurant.
 
-[![Python tests](https://github.com/KarlWendi/takeaway-ordering-simulator/actions/workflows/tests.yml/badge.svg)](https://github.com/KarlWendi/takeaway-ordering-simulator/actions/workflows/tests.yml)
+[![Python tests](https://github.com/KarlWendi/BiteBox/actions/workflows/tests.yml/badge.svg)](https://github.com/KarlWendi/BiteBox/actions/workflows/tests.yml)
+
+## The problem BiteBox addresses
+
+Taking a takeaway order involves more than choosing food: customers need to see what is available and follow their order, while staff need an organised view of incoming orders and control over preparation. When ordering, stock and kitchen updates are handled separately, it becomes easier to accept unavailable items or leave customers unsure about their order's progress.
+
+BiteBox brings these steps together in an interactive demonstration. Customers can browse the menu, build a trolley, place an order and track its status. Stock is checked and reserved when an order is saved. Staff can manage kitchen progress, while administrators manage stock, staff access and invitations for additional administrators. Customer accounts provide personal order history, and guest ordering remains available.
+
+## Why it was developed
+
+BiteBox was developed as a guided Python learning and portfolio project to explore how customer ordering, inventory and kitchen capacity connect. It grew from a terminal ordering simulator into a publicly accessible website, providing practical experience with Streamlit interfaces, FastAPI services, SQLite transactions, account permissions, automated testing and deployment. Development was supported by AI assistance.
+
+The project also explores how the number of kitchen stations affects waiting times through a simplified queue simulation. Its estimates use fictional preparation times; actual order status changes are controlled by staff. BiteBox demonstrates these workflows with fictional data and does not process payments or fulfil real food orders.
 
 ## Current stage: 8 — public website
 
@@ -162,6 +174,6 @@ Restart `restaurant.py` after placing two burgers: stock should be 18 and the sa
 
 ## Customer and admin controls
 
-The website includes customer registration, sign-in, personal order history and password changes. Administrators can create staff accounts, enable or disable customer/staff access, update stock and operate the kitchen. Customers cannot access staff or administrator actions.
+The website includes customer registration, sign-in, personal order history and password changes. Administrators can create staff accounts, invite additional administrators through single-use links that expire after 24 hours, enable or disable customer/staff access, update stock and operate the kitchen. Customers cannot access staff or administrator actions.
 
 See [account setup and deployment](DEPLOYMENT.md#customer-and-administrator-accounts) to create the initial administrator using hosting secrets. These features must be deployed before they appear on the public demo.
