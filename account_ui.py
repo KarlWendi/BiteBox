@@ -77,24 +77,34 @@ def show_account():
                     st.session_state.pop('staff_auth', None)
                     st.session_state.pop('staff_expires', None)
                     st.rerun()
-        with st.expander('Create a customer account'):
-            with st.form('register_customer', clear_on_submit=True):
-                username = st.text_input('Choose a username')
-                password = st.text_input('Choose a password', type='password', help='Use at least 12 characters.')
-                confirm = st.text_input('Confirm password', type='password')
-                if st.form_submit_button('Create account'):
-                    if not 12 <= len(password) <= 128:
-                        st.error('Use a password between 12 and 128 characters.')
-                    elif password != confirm:
-                        st.error('The passwords do not match.')
-                    else:
-                        try:
-                            web_client.request_api('POST', '/auth/register', json={'username': username, 'password': password})
-                        except APIError as error:
-                            st.error(str(error))
-                        else:
-                            st.session_state['account_notice'] = 'Account created. You can now sign in.'
-                            st.rerun()
+        if st.button("Don't have an account? Create a customer account", type='tertiary'):
+            st.session_state['account_page'] = 'register'
+            st.rerun()
+
+
+def show_registration():
+    st.caption('Create an account to save your order history.')
+    if st.button('Already have an account? Sign in', type='tertiary'):
+        st.session_state['account_page'] = True
+        st.rerun()
+    with st.form('register_customer', clear_on_submit=True):
+        username = st.text_input('Choose a username')
+        password = st.text_input('Choose a password', type='password', help='Use at least 12 characters.')
+        confirm = st.text_input('Confirm password', type='password')
+        if st.form_submit_button('Create account'):
+            if not 12 <= len(password) <= 128:
+                st.error('Use a password between 12 and 128 characters.')
+            elif password != confirm:
+                st.error('The passwords do not match.')
+            else:
+                try:
+                    web_client.request_api('POST', '/auth/register', json={'username': username, 'password': password})
+                except APIError as error:
+                    st.error(str(error))
+                else:
+                    st.session_state['account_page'] = True
+                    st.session_state['account_notice'] = 'Account created. You can now sign in.'
+                    st.rerun()
 
 
 def show_admin():

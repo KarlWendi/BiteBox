@@ -49,8 +49,13 @@ class AccountWebsiteTests(unittest.TestCase):
         self.fill('Account password', password)
         self.click('Sign in')
 
-    def register(self, username):
+    def open_registration(self):
         self.open_account()
+        if self.app.session_state['account_page'] != 'register':
+            self.click("Don't have an account? Create a customer account")
+
+    def register(self, username):
+        self.open_registration()
         self.fill('Choose a username', username)
         self.fill('Choose a password', PASSWORD)
         self.fill('Confirm password', PASSWORD)
@@ -101,6 +106,16 @@ class AccountWebsiteTests(unittest.TestCase):
         self.click('← Back to your order')
         self.click('Order #1: mark as preparing')
 
+    def test_registration_has_its_own_page(self):
+        self.open_account()
+        self.assertFalse(any(f.label == 'Choose a username' for f in self.app.text_input))
+        self.open_registration()
+        self.assertTrue(any(f.label == 'Choose a username' for f in self.app.text_input))
+        self.assertFalse(any(f.label == 'Account username' for f in self.app.text_input))
+        self.click('Already have an account? Sign in')
+        self.assertTrue(any(f.label == 'Account username' for f in self.app.text_input))
+        self.assertFalse(any(f.label == 'Choose a username' for f in self.app.text_input))
+
     def test_account_navigation_preserves_trolley(self):
         self.click('Add to trolley')
         self.assertEqual(self.app.session_state['trolley'], {1: 1})
@@ -113,7 +128,7 @@ class AccountWebsiteTests(unittest.TestCase):
         self.assertEqual(self.app.dataframe[0].value['Order'].tolist(), ['#1'])
 
     def test_password_validation_and_change(self):
-        self.open_account()
+        self.open_registration()
         self.fill('Choose a username', 'alice')
         self.fill('Choose a password', 'short')
         self.fill('Confirm password', 'short')

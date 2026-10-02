@@ -3,7 +3,7 @@ import os
 import streamlit as st
 from menu import format_price
 from tracking_ui import show_tracking
-from account_ui import show_account, account_headers
+from account_ui import show_account, show_registration, account_headers
 from web_client import APIError, request_api
 
 st.set_page_config(page_title="BiteBox | Fresh food, fast", page_icon="🍔", layout="wide")
@@ -30,12 +30,16 @@ st.markdown('''<style>
 .stButton>button[kind="tertiary"]{background:transparent;border:0;color:#1f6b45;text-decoration:underline;padding:0;min-height:1.8rem}
 </style>''', unsafe_allow_html=True)
 if st.session_state.get('account_page', False):
-    st.title('BiteBox · Your account')
+    registering = st.session_state['account_page'] == 'register' and not st.session_state.get('account_session')
+    st.title('Create a customer account' if registering else 'BiteBox · Your account')
     if st.button('← Back to your order', type='tertiary'):
         st.session_state['account_page'] = False
         st.rerun()
     st.caption('Your trolley is saved while you sign in or create an account.')
-    show_account()
+    if registering:
+        show_registration()
+    else:
+        show_account()
     st.stop()
 
 account_label = 'Your account' if st.session_state.get('account_session') else "Don't have an account? Create one or sign in"
