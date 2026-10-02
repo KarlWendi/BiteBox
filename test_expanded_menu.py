@@ -11,6 +11,31 @@ from menu import MENU
 from kitchen import PREP_MINUTES
 
 class ExpandedMenuTests(unittest.TestCase):
+    def test_replacement_preserves_receipts_and_retires_duplicate(self):
+        from database import connect, get_orders, ItemNotFoundError
+        with TemporaryDirectory() as folder:
+            path = Path(folder) / 'migration.db'
+            initialise_database(path)
+            with closing(connect(path)) as connection, connection:
+                connection.execute("UPDATE products SET name = 'Burger' WHERE id = 1")
+                connection.execute("INSERT INTO products VALUES (4, 'Cheeseburger', 449, 20)")
+            old = place_order(1, 1, path)
+            with closing(connect(path)) as connection, connection:
+                connection.execute('UPDATE order_items SET product_name = NULL')
+            initialise_database(path)
+            initialise_database(path)
+            catalogue = get_menu(path)
+            self.assertEqual(len(catalogue), 12)
+            self.assertEqual(sum(item['name'] == 'Cheeseburger' for item in catalogue), 1)
+            self.assertEqual(get_orders(path)[0]['items'][0]['name'], 'Burger')
+            self.assertEqual(get_orders(path)[0]['total_pence'], old['total_pence'])
+            self.assertEqual(catalogue[0]['stock'], 19)
+            with self.assertRaises(ItemNotFoundError):
+                place_order(4, 1, path)
+            replacement = place_order(13, 1, path)
+            self.assertEqual(replacement['name'], 'Mozzarella Sticks')
+            self.assertEqual(replacement['total_pence'], 499)
+
     def test_new_items_can_be_ordered_and_scheduled(self):
         configure_staff(self)
         with TemporaryDirectory() as folder, TestClient(create_app(Path(folder) / 'menu.db')) as client:

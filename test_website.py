@@ -61,7 +61,7 @@ class WebsiteTests(unittest.TestCase):
         self.assertFalse(self.app.exception)
         self.assertEqual(
             self.app.error[0].value,
-            'Only 20 × Burger are currently available.',
+            'Only 20 × Cheeseburger are currently available.',
         )
         self.assertEqual(self.client.get('/orders').json(), [])
         self.assertEqual(self.client.get('/menu').json()[0]['stock'], 20)

@@ -1,10 +1,10 @@
 """Stage 1: display a fictional takeaway menu. Run with Python 3."""
 
 MENU = [
-    {"id": 1, "name": "Burger", "price_pence": 399},
+    {"id": 1, "name": "Cheeseburger", "price_pence": 399},
     {"id": 2, "name": "Fries", "price_pence": 199},
     {"id": 3, "name": "Wrap", "price_pence": 449},
-    {"id": 4, "name": "Cheeseburger", "price_pence": 449},
+    {"id": 13, "name": "Mozzarella Sticks", "price_pence": 499},
     {"id": 5, "name": "Chicken Burger", "price_pence": 499},
     {"id": 6, "name": "Veggie Burger", "price_pence": 479},
     {"id": 7, "name": "Chicken Nuggets", "price_pence": 349},

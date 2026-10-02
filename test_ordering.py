@@ -10,7 +10,7 @@ class OrderingTests(unittest.TestCase):
     def test_two_burgers_total_798_pence(self):
         order = calculate_order(1, 2)
         self.assertEqual(order["total_pence"], 798)
-        self.assertEqual(order["name"], "Burger")
+        self.assertEqual(order["name"], "Cheeseburger")
         self.assertEqual(order["quantity"], 2)
 
     def test_different_product_uses_its_own_price(self):

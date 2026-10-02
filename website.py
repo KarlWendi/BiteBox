@@ -23,7 +23,7 @@ h1,h2,h3{font-family:'Outfit',sans-serif!important;letter-spacing:-.025em}[data-
 </style>
 """, unsafe_allow_html=True)
 
-ICONS={"Burger":"🍔","Cheeseburger":"🧀","Chicken Burger":"🍗","Veggie Burger":"🌱","Fries":"🍟","Wrap":"🌯","Chicken Nuggets":"🍗","Onion Rings":"🧅","Side Salad":"🥗","Cola":"🥤","Bottled Water":"💧","Chocolate Milkshake":"🥛"}
+ICONS={"Burger":"🍔","Cheeseburger":"🍔","Mozzarella Sticks":"🧀","Chicken Burger":"🍗","Veggie Burger":"🌱","Fries":"🍟","Wrap":"🌯","Chicken Nuggets":"🍗","Onion Rings":"🧅","Side Salad":"🥗","Cola":"🥤","Bottled Water":"💧","Chocolate Milkshake":"🥛"}
 
 # Navigate within the same session so signing in never loses the customer's meal.
 st.markdown('''<style>
@@ -83,6 +83,11 @@ try:menu=request_api("GET","/menu")
 except APIError as error:
     st.error(str(error));st.info("The ordering service may be waking up. Wait a moment, then refresh.");st.stop()
 if "trolley" not in st.session_state:st.session_state["trolley"]={}
+removed = set(st.session_state['trolley']) - {item['id'] for item in menu}
+if removed:
+    for product_id in removed:
+        del st.session_state['trolley'][product_id]
+    st.warning('An item is no longer on the menu and was removed from your trolley. Please review your order.')
 
 st.markdown('<div id="menu"></div><div class="kicker">Explore the menu</div><div class="section-title">Made for every craving</div><div class="section-copy">Add your favourites straight to your trolley.</div>',unsafe_allow_html=True)
 for start in range(0,len(menu),4):

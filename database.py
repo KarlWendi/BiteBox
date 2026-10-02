@@ -15,7 +15,7 @@ from kitchen import PREP_MINUTES
 
 # Keep the database beside this file, regardless of the terminal's folder.
 DATABASE_PATH = Path(os.environ.get("TAKEAWAY_DATABASE_PATH") or Path(__file__).resolve().with_name("restaurant.db"))
-INITIAL_STOCK = {1: 20, 2: 30, 3: 15, 4: 20, 5: 20, 6: 15, 7: 25, 8: 25, 9: 15, 10: 40, 11: 40, 12: 20}
+INITIAL_STOCK = {1: 20, 2: 30, 3: 15, 4: 20, 5: 20, 6: 15, 7: 25, 8: 25, 9: 15, 10: 40, 11: 40, 12: 20, 13: 20}
 
 # Custom exceptions for specific error scenarios in the database operations, allowing the calling code to handle these cases appropriately.
 class ItemNotFoundError(ValueError):
@@ -126,6 +126,14 @@ def initialise_database(database_path=DATABASE_PATH):
                     JOIN products ON products.id = legacy_orders.item_id
                 """)
                 connection.execute("DROP TABLE legacy_orders")
+            # Snapshot names before changing the catalogue so receipts stay accurate.
+            if 'product_name' not in {row['name'] for row in connection.execute('PRAGMA table_info(order_items)')}:
+                connection.execute('ALTER TABLE order_items ADD COLUMN product_name TEXT')
+            connection.execute("""UPDATE order_items SET product_name =
+                (SELECT name FROM products WHERE products.id = order_items.item_id)
+                WHERE product_name IS NULL""")
+            connection.execute("UPDATE products SET name = 'Cheeseburger' WHERE id = 1 AND name = 'Burger'")
+
     finally:
         connection.close()
 
@@ -135,7 +143,7 @@ def get_menu(database_path=DATABASE_PATH):
     connection = connect(database_path)
     try:
         rows = connection.execute(
-            "SELECT * FROM products ORDER BY id"
+            "SELECT * FROM products WHERE id != 4 ORDER BY CASE WHEN id = 13 THEN 4 ELSE id END"
         ).fetchall()
         return [dict(row) for row in rows]
     finally:
@@ -190,7 +198,7 @@ def checkout(items, database_path=DATABASE_PATH, *, customer_id=None):
                 product = connection.execute(
                     "SELECT * FROM products WHERE id = ?", (item_id,)
                 ).fetchone()
-                if product is None:
+                if product is None or item_id == 4:
                     raise ItemNotFoundError("Menu item not found.")
                 if product["stock"] < quantity:
                     raise InsufficientStockError(
@@ -219,11 +227,11 @@ def checkout(items, database_path=DATABASE_PATH, *, customer_id=None):
                 connection.execute("""
                     INSERT INTO order_items (
                         order_id, item_id, quantity,
-                        unit_price_pence, total_pence
-                    ) VALUES (?, ?, ?, ?, ?)
+                        unit_price_pence, total_pence, product_name
+                    ) VALUES (?, ?, ?, ?, ?, ?)
                 """, (
                     order_id, line["item_id"], line["quantity"],
-                    line["unit_price_pence"], line["total_pence"],
+                    line["unit_price_pence"], line["total_pence"], line["name"],
                 ))
             order = {
                 "order_id": order_id,
@@ -255,7 +263,7 @@ def get_orders(database_path=DATABASE_PATH, *, tracking_code=None, customer_id=N
         orders = []
         for row in rows:
             item_rows = connection.execute("""
-                SELECT order_items.item_id, products.name,
+                SELECT order_items.item_id, COALESCE(order_items.product_name, products.name) AS name,
                        order_items.quantity, order_items.unit_price_pence,
                        order_items.total_pence
                 FROM order_items

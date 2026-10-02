@@ -64,7 +64,7 @@ class WebClientRetryTests(unittest.TestCase):
                 web_client._close_embedded_client()
 
         self.assertGreater(len(result), 3)
-        self.assertEqual(result[0]["name"], "Burger")
+        self.assertEqual(result[0]["name"], "Cheeseburger")
         remote_request.assert_not_called()
 
 
