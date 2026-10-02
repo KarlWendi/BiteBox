@@ -6,6 +6,17 @@ An educational Python project exploring food ordering, inventory and kitchen wai
 
 ## Current stage: 8 — public website
 
+### Customer experience
+
+- Add products directly from their menu cards. The navigation shows the number of items in your trolley.
+- Use the trolley's plus/minus controls to change quantities or remove a product. Stock and the 50-per-product limit cap additions; checkout checks stock again.
+- Use Menu, Your order and Track order links to move around the page. A compact welcome banner includes an Order now shortcut.
+- Registration and sign-in have separate screens, visible field labels and password guidance. Returning to the order preserves the trolley.
+- Staff access is separate from customer tracking. Staff and administrators who sign in with an individual account see a Kitchen controls link; the legacy shared staff login remains available.
+- The default light theme matches the storefront, including form fields and focus indicators.
+
+This concludes the current educational demo scope. Persistent hosting storage, password recovery, payment processing and protection against duplicate checkout submissions remain future work.
+
 **[Try the live demo](https://takeaway-ordering-demo.onrender.com/)** — no Python installation needed. Free hosting may take about a minute to wake up. Shared fictional stock and orders reset when the service restarts.
 
 The terminal and FastAPI web API share SQLite menu, stock and orders. Both reserve stock and save each order in one transaction. A queue simulator now assigns queued orders to kitchen stations and reports simulated waiting and completion times. It reads a snapshot without changing stock or order status.

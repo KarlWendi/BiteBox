@@ -2,7 +2,7 @@
 import os
 import streamlit as st
 from menu import format_price
-from tracking_ui import show_tracking
+from tracking_ui import show_tracking, show_staff
 from account_ui import show_account, show_registration, account_headers
 from web_client import APIError, request_api
 
@@ -29,7 +29,24 @@ ICONS={"Burger":"🍔","Cheeseburger":"🧀","Chicken Burger":"🍗","Veggie Bur
 st.markdown('''<style>
 .stButton>button[kind="tertiary"]{background:transparent;border:0;color:#1f6b45;text-decoration:underline;padding:0;min-height:1.8rem}
 [data-testid="stWidgetLabel"], [data-testid="stWidgetLabel"] p {color:#17211b!important;font-weight:700!important}
+[data-testid="stTextInput"] input,[data-testid="stNumberInput"] input {background:#fff!important;color:#17211b!important;caret-color:#17211b}
+[data-testid="stTextInput"] [data-baseweb="input"],[data-testid="stNumberInput"] [data-baseweb="input"] {background:#fff!important;border-color:#68736c!important}
+[data-testid="stTextInput"] button,[data-testid="stNumberInput"] button {background:#fff!important;color:#17211b!important}
+[data-testid="stCaptionContainer"], [data-testid="stCaptionContainer"] p {color:#526058!important}
+button:focus-visible,a:focus-visible,input:focus-visible {outline:3px solid #1f6b45!important;outline-offset:3px}
+.hero{padding:1.8rem 2rem}.hero h1{font-size:clamp(2rem,5vw,3.2rem)}.hero-points{flex-wrap:wrap;gap:.7rem}.section-nav{display:flex;flex-wrap:wrap;gap:1.2rem;padding:.8rem 0}.section-nav a{color:#1f6b45;font-weight:700}.order-now{display:inline-block;margin-top:1rem;background:white;color:#16442d!important;padding:.65rem 1rem;border-radius:10px;font-weight:700;text-decoration:none}
+@media(max-width:600px){.hero{padding:1.4rem}.block-container{padding-left:1rem;padding-right:1rem}.nav-note{font-size:.75rem}}
 </style>''', unsafe_allow_html=True)
+if st.session_state.get('staff_page', False):
+    st.title('BiteBox · Staff')
+    if st.button('← Back to your order', type='tertiary'):
+        st.session_state['staff_page'] = False
+        st.rerun()
+    notice = st.session_state.pop('order_notice', None)
+    if notice:
+        st.success(notice)
+    show_staff()
+    st.stop()
 if st.session_state.get('account_page', False):
     registering = st.session_state['account_page'] == 'register' and not st.session_state.get('account_session')
     st.title('Create a customer account' if registering else 'BiteBox · Your account')
@@ -48,7 +65,16 @@ if st.button(account_label, type='tertiary', key='open_account'):
     st.session_state['account_page'] = True
     st.rerun()
 
-st.markdown("""<div class="site-nav"><div class="brand"><span class="brand-mark">B</span> BiteBox</div><div class="nav-note">Order online · Collect fresh</div></div><section class="hero"><span class="eyebrow">Freshly made · Ready fast</span><h1>Big flavour.<br>Zero fuss.</h1><p>Build your perfect order from our freshly prepared favourites, check out in seconds, and follow it from kitchen to collection.</p><div class="hero-points"><span>✓ Fresh ingredients</span><span>✓ Live order status</span><span>✓ Easy collection</span></div></section>""",unsafe_allow_html=True)
+st.session_state.setdefault('trolley', {})
+basket_count = sum(st.session_state['trolley'].values())
+st.markdown(f'<nav class="section-nav" aria-label="Store navigation"><a href="#menu">Menu</a><a href="#your-order">Your order ({basket_count})</a><a href="#track-order">Track order</a></nav>', unsafe_allow_html=True)
+session = st.session_state.get('account_session')
+if session and session['user']['role'] in ('staff', 'admin'):
+    if st.button('Kitchen controls', type='tertiary'):
+        st.session_state['staff_page'] = True
+        st.rerun()
+
+st.markdown("""<div class="site-nav"><div class="brand"><span class="brand-mark">B</span> BiteBox</div><div class="nav-note">Order online · Collect fresh</div></div><section class="hero"><span class="eyebrow">Freshly made · Ready fast</span><h1>Big flavour.<br>Zero fuss.</h1><p>Build your perfect order from our freshly prepared favourites, check out in seconds, and follow it from kitchen to collection.</p><div class="hero-points"><span>✓ Fresh ingredients</span><span>✓ Live order status</span><span>✓ Easy collection</span></div><a class="order-now" href="#menu">Order now</a></section>""",unsafe_allow_html=True)
 if os.environ.get("TAKEAWAY_TEMPORARY_DEMO")=="1":st.info("Demo mode: orders are simulated, shared by visitors and may reset when the free service restarts.")
 notice=st.session_state.pop("order_notice",None)
 if notice:st.success(notice)
@@ -58,15 +84,23 @@ except APIError as error:
     st.error(str(error));st.info("The ordering service may be waking up. Wait a moment, then refresh.");st.stop()
 if "trolley" not in st.session_state:st.session_state["trolley"]={}
 
-st.markdown('<div class="kicker">Explore the menu</div><div class="section-title">Made for every craving</div><div class="section-copy">Choose from burgers, sides, lighter bites and drinks.</div>',unsafe_allow_html=True)
+st.markdown('<div id="menu"></div><div class="kicker">Explore the menu</div><div class="section-title">Made for every craving</div><div class="section-copy">Add your favourites straight to your trolley.</div>',unsafe_allow_html=True)
 for start in range(0,len(menu),4):
     for column,item in zip(st.columns(4),menu[start:start+4]):
         stock=f"{item['stock']} available" if item["stock"] else "Sold out";stock_class="stock" if item["stock"] else "stock sold"
-        with column:st.markdown(f'<div class="food-card"><div class="food-icon">{ICONS.get(item["name"],"🍽️")}</div><div class="food-name">{item["name"]}</div><div class="food-meta"><span class="food-price">{format_price(item["price_pence"])}</span><span class="{stock_class}">{stock}</span></div></div>',unsafe_allow_html=True)
+        with column:
+            st.markdown(f'<div class="food-card"><div class="food-icon">{ICONS.get(item["name"],"🍽️")}</div><div class="food-name">{item["name"]}</div><div class="food-meta"><span class="food-price">{format_price(item["price_pence"])}</span><span class="{stock_class}">{stock}</span></div></div>',unsafe_allow_html=True)
+            amount = st.session_state['trolley'].get(item['id'], 0)
+            if st.button(f"Add {item['name']}", key=f"add-{item['id']}", width='stretch',
+                         disabled=amount >= min(item['stock'], 50)):
+                st.session_state['trolley'][item['id']] = amount + 1
+                st.rerun()
+            if amount:
+                st.caption(f'{amount} in your trolley')
 
-st.markdown('<div class="kicker">Your order</div><div class="section-title">Build your meal</div><div class="section-copy">Add different items, review your trolley, then check out once.</div>',unsafe_allow_html=True)
+st.markdown('<div id="your-order"></div><div class="kicker">Your order</div><div class="section-title">Build your meal</div><div class="section-copy">Adjust quantities, review your trolley, then check out once.</div>',unsafe_allow_html=True)
 order_column,trolley_column=st.columns([1.15,.85],gap="large");available=[item for item in menu if item["stock"]>0]
-with order_column:
+with order_column, st.expander('Quick add multiple items'):
     if available:
         by_id={item["id"]:item for item in available}
         with st.form("trolley_form",clear_on_submit=False):
@@ -94,6 +128,18 @@ with trolley_column:
         for index,product_id in enumerate(list(trolley)):
             item=menu_by_id[product_id]
             with cols[index%len(cols)]:
+                minus, plus = st.columns(2)
+                with minus:
+                    if st.button(f"− {item['name']}", key=f"decrease-{product_id}", help='Remove one from your trolley', width='stretch'):
+                        if trolley[product_id] == 1:
+                            del trolley[product_id]
+                        else:
+                            trolley[product_id] -= 1
+                        st.rerun()
+                with plus:
+                    if st.button(f"+ {item['name']}", key=f"increase-{product_id}", help='Add one to your trolley', width='stretch', disabled=trolley[product_id] >= min(item['stock'], 50)):
+                        trolley[product_id] += 1
+                        st.rerun()
                 if st.button(f"Remove {item['name']}",key=f"remove-{product_id}",width="stretch"):del st.session_state["trolley"][product_id];st.rerun()
         if st.button("Checkout",type="primary",width="stretch"):
             items=[{"item_id":product_id,"quantity":amount} for product_id,amount in trolley.items()]
@@ -105,6 +151,9 @@ with trolley_column:
                 st.session_state["trolley"]={};st.session_state["order_notice"]=(f"Order #{order['order_id']} placed with {len(order['items'])} item type(s) — {format_price(order['total_pence'])}.");st.rerun()
     else:st.markdown('<div class="empty"><span>🛒</span>Your trolley is empty.<br>Add something delicious to get started.</div></div>',unsafe_allow_html=True)
 
-st.markdown('<div class="kicker">Order tracking</div><div class="section-title">From kitchen to collection</div><div class="section-copy">This view refreshes automatically while food is being prepared.</div>',unsafe_allow_html=True)
+st.markdown('<div id="track-order"></div><div class="kicker">Order tracking</div><div class="section-title">From kitchen to collection</div><div class="section-copy">This view refreshes automatically while food is being prepared.</div>',unsafe_allow_html=True)
 show_tracking()
+if st.button('Staff access', type='tertiary'):
+    st.session_state['staff_page'] = True
+    st.rerun()
 st.markdown('<div class="footer"><strong>BiteBox</strong> · Educational ordering simulation · No payments or real deliveries</div>',unsafe_allow_html=True)

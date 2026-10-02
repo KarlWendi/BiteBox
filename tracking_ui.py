@@ -88,45 +88,51 @@ def staff_orders():
 
 
 def show_tracking():
-    customer_tab, staff_tab = st.tabs(["Your orders", "Staff"])
-    with customer_tab:
-        with st.form("track_order", clear_on_submit=True):
-            code = st.text_input("Private tracking code", type="password")
-            if st.form_submit_button("Track order"):
+    with st.form("track_order", clear_on_submit=True):
+        code = st.text_input("Private tracking code", type="password")
+        if st.form_submit_button("Track order"):
+            try:
+                order = web_client.request_api("POST", "/track", json={"tracking_code": code.strip()})
+            except APIError as error:
+                st.error(str(error))
+            else:
+                st.session_state.setdefault("tracking_codes", {})[code.strip()] = order["id"]
+    st.caption("Save your code to reopen your order later. Anyone with the code can view that order.")
+    customer_orders()
+
+
+def show_staff():
+    if not st.session_state.get('account_session'):
+        if st.button('Sign in with a staff or admin account', type='tertiary'):
+            st.session_state['staff_page'] = False
+            st.session_state['account_page'] = True
+            st.rerun()
+        st.caption('The form below is for the shared staff login, if configured.')
+    account = st.session_state.get('account_session')
+    if account:
+        if account['user']['role'] in ('staff', 'admin'):
+            staff_orders()
+        else:
+            st.info('Staff access is required for kitchen controls.')
+        return
+    if time.time() >= st.session_state.get("staff_expires", 0):
+        st.session_state.pop("staff_auth", None)
+    if "staff_auth" not in st.session_state:
+        with st.form("staff_login", clear_on_submit=True):
+            username = st.text_input("Staff username")
+            password = st.text_input("Staff password", type="password")
+            if st.form_submit_button("Log in"):
                 try:
-                    order = web_client.request_api("POST", "/track", json={"tracking_code": code.strip()})
+                    web_client.request_api("GET", "/staff/session", auth=(username, password))
                 except APIError as error:
                     st.error(str(error))
                 else:
-                    st.session_state.setdefault("tracking_codes", {})[code.strip()] = order["id"]
-        st.caption("Save your code to reopen your order later. Anyone with the code can view that order.")
-        customer_orders()
-    with staff_tab:
-        account = st.session_state.get('account_session')
-        if account:
-            if account['user']['role'] in ('staff', 'admin'):
-                staff_orders()
-            else:
-                st.info('Staff access is required for kitchen controls.')
-            return
-        if time.time() >= st.session_state.get("staff_expires", 0):
+                    st.session_state["staff_auth"] = (username, password)
+                    st.session_state["staff_expires"] = time.time() + 3600
+                    st.rerun()
+    else:
+        if st.button("Log out"):
             st.session_state.pop("staff_auth", None)
-        if "staff_auth" not in st.session_state:
-            with st.form("staff_login", clear_on_submit=True):
-                username = st.text_input("Staff username")
-                password = st.text_input("Staff password", type="password")
-                if st.form_submit_button("Log in"):
-                    try:
-                        web_client.request_api("GET", "/staff/session", auth=(username, password))
-                    except APIError as error:
-                        st.error(str(error))
-                    else:
-                        st.session_state["staff_auth"] = (username, password)
-                        st.session_state["staff_expires"] = time.time() + 3600
-                        st.rerun()
-        else:
-            if st.button("Log out"):
-                st.session_state.pop("staff_auth", None)
-                st.session_state.pop("staff_expires", None)
-                st.rerun()
-            staff_orders()
+            st.session_state.pop("staff_expires", None)
+            st.rerun()
+        staff_orders()

@@ -15,7 +15,6 @@ def clear_account():
 
 
 def show_account():
-    st.subheader('Your account')
     notice = st.session_state.pop('account_notice', None)
     if notice:
         st.success(notice)
@@ -87,6 +86,7 @@ def show_registration():
     if st.button('Already have an account? Sign in', type='tertiary'):
         st.session_state['account_page'] = True
         st.rerun()
+    st.caption('Username: 3–40 letters, numbers, dots, hyphens or underscores. Password: 12–128 characters.')
     with st.form('register_customer', clear_on_submit=True):
         username = st.text_input('Choose a username')
         password = st.text_input('Choose a password', type='password', help='Use at least 12 characters.')

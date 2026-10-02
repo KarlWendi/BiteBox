@@ -25,6 +25,8 @@ class WebsiteTests(unittest.TestCase):
         self.request_mock = self.mock.start()
         self.app = AppTest.from_file(str(Path(__file__).with_name('website.py')), default_timeout=20).run()
     def login(self):
+        if not ('staff_page' in self.app.session_state and self.app.session_state['staff_page']):
+            next(b for b in self.app.button if b.label == 'Staff access').click().run()
         next(field for field in self.app.text_input if field.label == 'Staff username').set_value(STAFF_AUTH[0])
         next(field for field in self.app.text_input if field.label == 'Staff password').set_value(STAFF_AUTH[1])
         next(button for button in self.app.button if button.label == 'Log in').click().run()
@@ -137,6 +139,46 @@ class WebsiteTests(unittest.TestCase):
         self.assertFalse(app.exception)
         self.assertEqual(app.error[0].value, 'Service unavailable')
 
+    def test_card_buttons_quantity_controls_and_basket_count(self):
+        self.app.button(key='add-1').click().run()
+        self.app.button(key='increase-1').click().run()
+        self.assertEqual(self.app.session_state['trolley'], {1: 2})
+        self.assertTrue(any('Your order (2)' in entry.value for entry in self.app.markdown))
+        self.assertEqual(self.client.get('/menu').json()[0]['stock'], 20)
+        self.app.button(key='decrease-1').click().run()
+        self.assertEqual(self.app.session_state['trolley'], {1: 1})
+        self.app.button(key='decrease-1').click().run()
+        self.assertEqual(self.app.session_state['trolley'], {})
+        self.assertFalse(any(b.label == 'Checkout' for b in self.app.button))
+        self.assertFalse(self.app.exception)
+
+    def test_card_and_increment_stop_at_stock_and_order_limit(self):
+        self.app.session_state['trolley'] = {1: 20}
+        self.app.run()
+        self.assertTrue(self.app.button(key='add-1').disabled)
+        self.assertTrue(self.app.button(key='increase-1').disabled)
+        from database import connect
+        from contextlib import closing
+        with closing(connect(Path(self.directory.name) / 'test.db')) as connection, connection:
+            connection.execute('UPDATE products SET stock = 100 WHERE id = 2')
+        self.app.session_state['trolley'] = {2: 50}
+        self.app.run()
+        self.assertTrue(self.app.button(key='add-2').disabled)
+        self.assertTrue(self.app.button(key='increase-2').disabled)
+        self.client.post('/orders', json={'item_id': 1, 'quantity': 20})
+        self.app.session_state['trolley'] = {}
+        self.app.run()
+        self.assertTrue(self.app.button(key='add-1').disabled)
+        self.assertFalse(self.app.exception)
+
+    def test_staff_login_is_separate_from_customer_tracking(self):
+        self.assertFalse(any(f.label == 'Staff username' for f in self.app.text_input))
+        next(b for b in self.app.button if b.label == 'Staff access').click().run()
+        self.assertTrue(any(f.label == 'Staff username' for f in self.app.text_input))
+        self.assertFalse(any(f.label == 'Private tracking code' for f in self.app.text_input))
+        next(b for b in self.app.button if b.label == '← Back to your order').click().run()
+        self.assertTrue(any(f.label == 'Private tracking code' for f in self.app.text_input))
+
     def test_customers_only_see_their_own_orders_and_can_recover(self):
         self.client.post('/orders', json={'item_id': 2, 'quantity': 1})
         self.app.run()
@@ -157,6 +199,7 @@ class WebsiteTests(unittest.TestCase):
         self.assertEqual(len(fresh.dataframe), 0)
 
     def test_staff_login_failure_logout_and_expiry(self):
+        next(b for b in self.app.button if b.label == 'Staff access').click().run()
         self.client.post('/orders', json={'item_id': 1, 'quantity': 1})
         next(field for field in self.app.text_input if field.label == 'Staff username').set_value(STAFF_AUTH[0])
         next(field for field in self.app.text_input if field.label == 'Staff password').set_value('wrong')

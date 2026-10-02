@@ -104,6 +104,7 @@ class AccountWebsiteTests(unittest.TestCase):
         self.login('helper')
         self.assertFalse(any(button.label == 'Create staff account' for button in self.app.button))
         self.click('← Back to your order')
+        self.click('Kitchen controls')
         self.click('Order #1: mark as preparing')
 
     def test_registration_has_its_own_page(self):
