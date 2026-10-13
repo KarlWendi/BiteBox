@@ -11,6 +11,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, ConfigDict, Field
 
 from database import connect
+from account_email import email_enabled, normalise_email, mail_ready, issue_link
 
 SESSION_SECONDS = 3600
 PASSWORD_ROUNDS = 600_000
@@ -41,6 +42,15 @@ def initialise_accounts(connection):
         password_hash TEXT NOT NULL,
         role TEXT NOT NULL CHECK(role IN ('customer', 'staff', 'admin')),
         active INTEGER NOT NULL DEFAULT 1)""")
+    columns = {row['name'] for row in connection.execute('PRAGMA table_info(users)')}
+    if 'email' not in columns:
+        connection.execute('ALTER TABLE users ADD COLUMN email TEXT')
+    if 'email_verified' not in columns:
+        connection.execute('ALTER TABLE users ADD COLUMN email_verified INTEGER NOT NULL DEFAULT 0')
+    connection.execute('CREATE UNIQUE INDEX IF NOT EXISTS users_email ON users(email) WHERE email IS NOT NULL')
+    connection.execute('''CREATE TABLE IF NOT EXISTS account_links (
+        token_hash TEXT PRIMARY KEY, user_id INTEGER NOT NULL REFERENCES users(id),
+        email TEXT NOT NULL, kind TEXT NOT NULL CHECK(kind IN ('verify', 'reset')), expires_at REAL NOT NULL)''')
     connection.execute("""CREATE TABLE IF NOT EXISTS sessions (
         token_hash TEXT PRIMARY KEY, user_id INTEGER NOT NULL REFERENCES users(id),
         expires_at REAL NOT NULL)""")
@@ -70,7 +80,7 @@ def initialise_accounts(connection):
 
 
 def public_user(row):
-    return {key: row[key] for key in ('id', 'username', 'role', 'active')}
+    return {key: row[key] for key in ('id', 'username', 'role', 'active', 'email', 'email_verified')}
 
 
 def session_user(request, required=True):
@@ -117,11 +127,25 @@ class Credentials(BaseModel):
 
 class LoginRequest(BaseModel):
     model_config = ConfigDict(extra='forbid')
-    username: str = Field(min_length=1, max_length=40)
+    username: str = Field(min_length=1, max_length=254)
     password: str = Field(min_length=1, max_length=128)
 
 
-class InvitationRegistration(Credentials):
+class Registration(Credentials):
+    email: str | None = Field(default=None, max_length=254)
+
+
+def registration_email(credentials):
+    if email_enabled() and not credentials.email:
+        raise HTTPException(422, 'Enter your email address to create an account.')
+    if credentials.email:
+        email = normalise_email(credentials.email)
+        mail_ready()
+        return email
+    return None
+
+
+class InvitationRegistration(Registration):
     token: str = Field(min_length=20, max_length=128)
 
 
@@ -188,6 +212,7 @@ def account_router():
     @router.post('/auth/accept-invitation', status_code=201)
     def accept_invitation(body: InvitationRegistration, request: Request):
         username = normalise_username(body.username)
+        email = registration_email(body)
         digest = hashlib.sha256(body.token.encode()).hexdigest()
         with closing(connect(request.app.state.database_path)) as connection:
             address = request.client.host if request.client else 'unknown'
@@ -202,25 +227,38 @@ def account_router():
                 if not invitation:
                     raise HTTPException(400, 'This invitation is invalid, expired, revoked or already used. Ask an administrator for a new link.')
                 try:
-                    cursor = connection.execute('INSERT INTO users (username, password_hash, role) VALUES (?, ?, ?)',
-                                                (username, password_hash(body.password), 'admin'))
+                    cursor = connection.execute('INSERT INTO users (username, password_hash, role, email) VALUES (?, ?, ?, ?)',
+                                                (username, password_hash(body.password), 'admin', email))
                 except sqlite3.IntegrityError as error:
-                    raise HTTPException(409, 'That username is unavailable. Choose another username; your invitation is still valid.') from error
+                    raise HTTPException(409, 'That username or email is unavailable. Your invitation is still valid.') from error
                 connection.execute('UPDATE admin_invitations SET used_at = ? WHERE id = ?', (time.time(), invitation['id']))
-                return {'id': cursor.lastrowid, 'username': username, 'role': 'admin', 'active': 1}
+                user_id = cursor.lastrowid
+            if email:
+                try:
+                    issue_link(connection, user_id, email, 'verify')
+                except HTTPException as error:
+                    raise HTTPException(503, 'Your administrator account was saved, but its email could not be sent. Return to sign in and select Resend verification email.') from error
+            return {'id': user_id, 'username': username, 'role': 'admin', 'active': 1, 'verification_required': bool(email)}
 
     def create_user(connection, credentials, role):
         username = normalise_username(credentials.username)
+        email = registration_email(credentials)
         try:
             with connection:
-                cursor = connection.execute('INSERT INTO users (username, password_hash, role) VALUES (?, ?, ?)',
-                                            (username, password_hash(credentials.password), role))
-                return {'id': cursor.lastrowid, 'username': username, 'role': role, 'active': 1}
+                cursor = connection.execute('INSERT INTO users (username, password_hash, role, email) VALUES (?, ?, ?, ?)',
+                                            (username, password_hash(credentials.password), role, email))
+                user_id = cursor.lastrowid
         except sqlite3.IntegrityError as error:
-            raise HTTPException(409, 'That username is unavailable.') from error
+            raise HTTPException(409, 'That username or email is unavailable. Sign in or request a new verification email if you already registered.') from error
+        if email:
+            try:
+                issue_link(connection, user_id, email, 'verify')
+            except HTTPException as error:
+                raise HTTPException(503, 'Your account was saved, but its email could not be sent. Return to sign in and select Resend verification email.') from error
+        return {'id': user_id, 'username': username, 'role': role, 'active': 1, 'verification_required': bool(email)}
 
     @router.post('/auth/register', status_code=201)
-    def register(credentials: Credentials, request: Request):
+    def register(credentials: Registration, request: Request):
         with closing(connect(request.app.state.database_path)) as connection:
             address = request.client.host if request.client else 'unknown'
             throttle(connection, [('register:' + address, 30)])
@@ -228,15 +266,17 @@ def account_router():
 
     @router.post('/auth/login')
     def login(credentials: LoginRequest, request: Request):
-        username = normalise_username(credentials.username)
+        username = normalise_email(credentials.username) if '@' in credentials.username else normalise_username(credentials.username)
         with closing(connect(request.app.state.database_path)) as connection:
             address = request.client.host if request.client else 'unknown'
             throttle(connection, [('user:' + username, 10), ('login:' + address, 100)])
-            user = connection.execute('SELECT * FROM users WHERE username = ?', (username,)).fetchone()
+            user = connection.execute('SELECT * FROM users WHERE username = ? OR email = ?', (username, username)).fetchone()
             # Match the password work for unknown usernames to reduce timing disclosure.
             valid = password_matches(credentials.password, user['password_hash'] if user else '0' * 32 + ':' + '0' * 64)
             if not valid or not user or not user['active']:
                 raise HTTPException(401, 'Incorrect username or password.')
+            if user['email'] and not user['email_verified']:
+                raise HTTPException(403, 'Verify your email before signing in. Use Resend verification email if needed.')
             token = secrets.token_urlsafe(32)
             expires = time.time() + SESSION_SECONDS
             with connection:
@@ -269,6 +309,7 @@ def account_router():
                     raise HTTPException(401, 'Current password is incorrect.')
                 connection.execute('UPDATE users SET password_hash = ? WHERE id = ?', (password_hash(body.new_password), user['id']))
                 connection.execute('DELETE FROM sessions WHERE user_id = ?', (user['id'],))
+                connection.execute("DELETE FROM account_links WHERE user_id = ? AND kind = 'reset'", (user['id'],))
         return {'signed_out': True}
 
     @router.get('/admin/users', dependencies=[Depends(require_admin)])
@@ -277,7 +318,7 @@ def account_router():
             return [public_user(row) for row in connection.execute('SELECT * FROM users ORDER BY id')]
 
     @router.post('/admin/staff', status_code=201, dependencies=[Depends(require_admin)])
-    def create_staff(credentials: Credentials, request: Request):
+    def create_staff(credentials: Registration, request: Request):
         with closing(connect(request.app.state.database_path)) as connection:
             return create_user(connection, credentials, 'staff')
 

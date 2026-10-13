@@ -10,6 +10,14 @@ from test_support import STAFF_AUTH, configure_staff
 
 
 class WebClientRetryTests(unittest.TestCase):
+    def test_persistent_embedded_mode_does_not_call_separate_api(self):
+        with patch.dict(os.environ, {'TAKEAWAY_EMBEDDED_API': '1', 'TAKEAWAY_TEMPORARY_DEMO': '0'}), \
+                patch('web_client._request_embedded', return_value=httpx.Response(200, json={'email_enabled': True})) as embedded, \
+                patch('web_client.httpx.request') as remote:
+            self.assertEqual(web_client.request_api('GET', '/auth/options'), {'email_enabled': True})
+            embedded.assert_called_once_with('GET', '/auth/options')
+            remote.assert_not_called()
+
     def tearDown(self):
         web_client._close_embedded_client()
 

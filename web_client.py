@@ -16,7 +16,7 @@ class APIError(Exception):
 
 def request_api(method, path, **kwargs):
     method = method.upper()
-    if os.environ.get("TAKEAWAY_TEMPORARY_DEMO") == "1":
+    if os.environ.get("TAKEAWAY_EMBEDDED_API") == "1" or os.environ.get("TAKEAWAY_TEMPORARY_DEMO") == "1":
         return _response_data(_request_embedded(method, path, **kwargs))
 
     attempts = READ_ATTEMPTS if method == "GET" else 1

@@ -69,6 +69,8 @@ def create_app(database_path=DATABASE_PATH):
     )
     application.state.database_path = database_path
     application.include_router(account_router())
+    from account_email import email_router
+    application.include_router(email_router())
 
 # Define the endpoints for the FastAPI application, including the home endpoint that returns a welcome message and documentation link,
 # the menu endpoint that returns the current menu items, the orders endpoint that returns all saved orders, and the order endpoint

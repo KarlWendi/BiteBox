@@ -1,5 +1,22 @@
 # Stage 8: publish a public demo
 
+## Persistent accounts with email (prepared upgrade)
+
+The new account flow follows the IT queueing system: verification email, sign-in with a verified email address, and single-use password-reset emails. Existing usernames remain valid. This upgrade is **not activated by pushing code alone**. Email features remain off until `TAKEAWAY_EMAIL_ENABLED=1` is configured on the API host. Existing accounts can sign in and add a verified recovery email under Your account.
+
+Use the existing **website** service as a single application with an embedded API and a persistent SQLite disk. `render.yaml` records the desired configuration. Review and approve Render's paid compute/disk charges before applying it; do not create a duplicate service. Render Free cannot attach disks and blocks SMTP ports. Current provider references: [free-service limits](https://render.com/docs/free), [compute plans](https://render.com/docs/compute-plans), [pricing](https://render.com/pricing).
+
+1. Back up the website service's existing SQLite database before a redeploy or storage change. Use SQLite's backup operation while the service is running, or copy it while stopped. Preserve the hosted database, not a developer's local `restaurant.db`. Never commit or publicly upload the backup.
+2. After approval, upgrade the existing website service to `0.5c-512mb` and attach a 1 GB disk at `/var/data`. Restore the hosted backup to `/var/data/restaurant.db` before changing the database path. Changing the path without restoring data creates an empty database; do not mistake that for migration. Ephemeral data lost before backup cannot be recovered by this code.
+3. Set `TAKEAWAY_DATABASE_PATH=/var/data/restaurant.db`, `TAKEAWAY_EMBEDDED_API=1`, `TAKEAWAY_TEMPORARY_DEMO=0`, and keep one instance. This separates embedded API operation from temporary demo storage. The standalone API service is not the website's account database in this configuration.
+4. Set `TAKEAWAY_WEBSITE_URL` to the website's actual public HTTPS URL. Configure `SMTP_HOST=smtp.gmail.com`, `SMTP_PORT=465`, `SMTP_USERNAME`, `SMTP_FROM`, and `SMTP_PASSWORD` (a Google app password) privately in Render, matching the queueing system's email setup. Never paste secrets into Git or chat. Keep existing admin bootstrap settings.
+5. Set `TAKEAWAY_EMAIL_ENABLED=1` and redeploy. New customers, invited administrators and staff must supply and verify an email address. Existing accounts are migrated in place without changing their IDs, passwords, roles or order ownership; the initial admin should add a recovery email immediately.
+6. Register a disposable customer, receive the actual email, verify it, sign in, place a test order and reset the password. Check an admin invitation in a separate browser session. Restart the service and confirm those accounts and orders still exist. These hosted delivery and restart checks are required before calling the upgrade live.
+
+Verification links last 24 hours; reset links last 30 minutes. Tokens are stored only as hashes, used once, and removed from the visible URL when the form loads. Initial URLs can still appear in hosting logs/history, so protect those logs. Opening a link alone does not consume it; the recipient confirms on the form. Password reset revokes all sign-in sessions. If delivery fails after creation, the account remains saved and the recipient can use **Resend verification email** without creating it again. Unknown recovery addresses receive the same public success message as eligible accounts. Neither tests nor development return tokens through public API responses.
+
+The historical deployment notes below describe the previous temporary setup.
+
 Live website: https://takeaway-ordering-demo.onrender.com/
 
 API address: https://takeaway-simulator-api.onrender.com/
@@ -52,7 +69,7 @@ Sign in through **Your account** using the administrator credentials. **Administ
 | Staff | Customer controls plus kitchen orders and queue |
 | Administrator | Staff controls plus create staff, enable/disable non-admin accounts, replace product stock |
 
-The initial administrator is created once. Restarts do not overwrite its password or create more administrators; use the signed-in password-change form to change the password. The admin account cannot be disabled in these controls. Store its password securely: there is no password recovery flow yet.
+The initial administrator is created once. Restarts do not overwrite its password or create more administrators; use the signed-in password-change form to change the password. The admin account cannot be disabled in these controls. Email password recovery is available after the upgrade above and requires a verified recovery address.
 
 Passwords are salted and hashed. Login sessions expire after one hour; signing out revokes that session, and changing a password or disabling an account revokes all its sessions. Login attempts are rate limited. Permissions and order ownership are checked by the API, not just by hiding buttons.
 

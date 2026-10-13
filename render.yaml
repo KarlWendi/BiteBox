@@ -1,0 +1,42 @@
+# Prepared paid configuration. Review charges before applying this blueprint.
+# Prefer upgrading the existing website service to preserve its URL.
+services:
+  - type: web
+    name: takeaway-ordering-demo
+    runtime: python
+    plan: 0.5c-512mb
+    numInstances: 1
+    buildCommand: pip install -r requirements.txt
+    startCommand: streamlit run website.py --server.address 0.0.0.0 --server.port $PORT --server.headless true --browser.gatherUsageStats false
+    healthCheckPath: /_stcore/health
+    disk:
+      name: bitebox-data
+      mountPath: /var/data
+      sizeGB: 1
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.12.12
+      - key: TAKEAWAY_EMBEDDED_API
+        value: "1"
+      - key: TAKEAWAY_TEMPORARY_DEMO
+        value: "0"
+      - key: TAKEAWAY_DATABASE_PATH
+        value: /var/data/restaurant.db
+      - key: TAKEAWAY_EMAIL_ENABLED
+        value: "1"
+      - key: TAKEAWAY_WEBSITE_URL
+        value: https://takeaway-ordering-demo.onrender.com
+      - key: TAKEAWAY_ADMIN_USERNAME
+        sync: false
+      - key: TAKEAWAY_ADMIN_PASSWORD
+        sync: false
+      - key: SMTP_HOST
+        value: smtp.gmail.com
+      - key: SMTP_PORT
+        value: "465"
+      - key: SMTP_USERNAME
+        sync: false
+      - key: SMTP_PASSWORD
+        sync: false
+      - key: SMTP_FROM
+        sync: false
