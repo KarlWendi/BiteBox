@@ -4,12 +4,13 @@
 from contextlib import asynccontextmanager
 
 # Standard library imports
-from fastapi import Depends, FastAPI, HTTPException, Query
+from fastapi import Depends, FastAPI, HTTPException, Query, Request
 from pydantic import BaseModel, ConfigDict, Field
 
 # Local imports
 from kitchen import simulate_queue
-from staff_auth import require_staff
+from staff_auth import basic, require_staff
+from fastapi.security import HTTPBasicCredentials
 from accounts import account_router, optional_account, require_account
 
 from database import (
@@ -45,6 +46,7 @@ class CheckoutRequest(BaseModel):
     """A complete trolley submitted as one order."""
     model_config = ConfigDict(extra="forbid")
     items: list[TrolleyItemRequest] = Field(min_length=1, max_length=20)
+    idempotency_key: str | None = Field(default=None, max_length=128)
 
 
 class TrackingRequest(BaseModel):
@@ -110,9 +112,16 @@ def create_app(database_path=DATABASE_PATH):
 
     # Read saved orders and simulate timing without changing stock or status.
     @application.get("/queue", dependencies=[Depends(require_staff)])
-    def queue_endpoint(stations: int = Query(default=2, ge=1, le=10)):
+    def queue_endpoint(
+        stations: int = Query(default=2, ge=1, le=10),
+        strategy: str = Query(default="fifo"),
+        compare: bool = Query(default=False),
+    ):
         try:
-            return simulate_queue(get_orders(database_path), stations)
+            if compare:
+                from kitchen import simulate_queue_comparison
+                return simulate_queue_comparison(get_orders(database_path), stations)
+            return simulate_queue(get_orders(database_path), stations, strategy=strategy)
         except ValueError as error:
             raise HTTPException(status_code=409, detail=str(error)) from error
 
@@ -132,6 +141,7 @@ def create_app(database_path=DATABASE_PATH):
                 [item.model_dump() for item in request.items],
                 database_path,
                 customer_id=user['id'] if user else None,
+                idempotency_key=request.idempotency_key,
             )
         except ItemNotFoundError as error:
             raise HTTPException(status_code=404, detail=str(error)) from error
@@ -140,8 +150,38 @@ def create_app(database_path=DATABASE_PATH):
         except ValueError as error:
             raise HTTPException(status_code=422, detail=str(error)) from error
 
-    @application.patch("/orders/{order_id}/status", dependencies=[Depends(require_staff)])
-    def status_endpoint(order_id: int, update: StatusUpdateRequest):
+    @application.patch("/orders/{order_id}/status")
+    def status_endpoint(
+        order_id: int,
+        update: StatusUpdateRequest,
+        request: Request,
+        credentials: HTTPBasicCredentials | None = Depends(basic),
+        user=Depends(optional_account),
+    ):
+        if update.status == "cancelled":
+            is_staff = False
+            if user and user.get("role") in ("staff", "admin"):
+                is_staff = True
+            else:
+                try:
+                    require_staff(request, credentials)
+                    is_staff = True
+                except HTTPException:
+                    pass
+
+            if not is_staff:
+                if user and user.get("role") == "customer":
+                    user_orders = get_orders(database_path, customer_id=user["id"])
+                    if not any(o["id"] == order_id for o in user_orders):
+                        raise HTTPException(status_code=403, detail="You do not have permission to cancel this order.")
+                else:
+                    raise HTTPException(
+                        status_code=401,
+                        detail="Authentication or staff permission required to cancel orders."
+                    )
+        else:
+            require_staff(request, credentials)
+
         try:
             return update_order_status(order_id, update.status, database_path)
         except ValueError as error:

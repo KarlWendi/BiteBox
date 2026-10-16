@@ -18,7 +18,7 @@ class ExpandedMenuTests(unittest.TestCase):
             initialise_database(path)
             with closing(connect(path)) as connection, connection:
                 connection.execute("UPDATE products SET name = 'Burger' WHERE id = 1")
-                connection.execute("INSERT INTO products VALUES (4, 'Cheeseburger', 449, 20)")
+                connection.execute("INSERT INTO products (id, name, price_pence, stock, category) VALUES (4, 'Cheeseburger', 449, 20, 'Burgers')")
             old = place_order(1, 1, path)
             with closing(connect(path)) as connection, connection:
                 connection.execute('UPDATE order_items SET product_name = NULL')

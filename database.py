@@ -44,16 +44,25 @@ def initialise_database(database_path=DATABASE_PATH):
                     id INTEGER PRIMARY KEY,
                     name TEXT NOT NULL,
                     price_pence INTEGER NOT NULL CHECK(price_pence >= 0),
-                    stock INTEGER NOT NULL CHECK(stock >= 0)
+                    stock INTEGER NOT NULL CHECK(stock >= 0),
+                    category TEXT NOT NULL DEFAULT 'Mains'
                 )
             """)
+            product_columns = {
+                row["name"] for row in connection.execute(
+                    "PRAGMA table_info(products)"
+                ).fetchall()
+            }
+            if "category" not in product_columns:
+                connection.execute("ALTER TABLE products ADD COLUMN category TEXT NOT NULL DEFAULT 'Mains'")
+
             for item in MENU:
                 connection.execute("""
-                    INSERT INTO products (id, name, price_pence, stock)
-                    VALUES (?, ?, ?, ?)
-                    ON CONFLICT(id) DO NOTHING
+                    INSERT INTO products (id, name, price_pence, stock, category)
+                    VALUES (?, ?, ?, ?, ?)
+                    ON CONFLICT(id) DO UPDATE SET category = excluded.category
                 """, (item["id"], item["name"], item["price_pence"],
-                      INITIAL_STOCK.get(item["id"], 0)))
+                      INITIAL_STOCK.get(item["id"], 0), item.get("category", "Mains")))
 
             # Older versions stored one product directly in each order. Move
             # those rows into the new order/order_items structure once.
@@ -106,6 +115,13 @@ def initialise_database(database_path=DATABASE_PATH):
                     unit_price_pence INTEGER NOT NULL CHECK(unit_price_pence >= 0),
                     total_pence INTEGER NOT NULL CHECK(total_pence >= 0),
                     UNIQUE(order_id, item_id)
+                )
+            """)
+            connection.execute("""
+                CREATE TABLE IF NOT EXISTS checkout_tokens (
+                    token TEXT PRIMARY KEY,
+                    order_id INTEGER NOT NULL REFERENCES orders(id) ON DELETE CASCADE,
+                    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
                 )
             """)
 
@@ -173,7 +189,7 @@ def place_order(item_id, quantity, database_path=DATABASE_PATH, *, customer_id=N
     }
 
 
-def checkout(items, database_path=DATABASE_PATH, *, customer_id=None):
+def checkout(items, database_path=DATABASE_PATH, *, customer_id=None, idempotency_key=None):
     """Validate and save a complete trolley as one atomic order."""
     if type(items) is not list or not items:
         raise ValueError("The trolley must contain at least one item.")
@@ -193,6 +209,34 @@ def checkout(items, database_path=DATABASE_PATH, *, customer_id=None):
     try:
         with connection:
             connection.execute("BEGIN IMMEDIATE")
+            if idempotency_key:
+                existing_row = connection.execute(
+                    "SELECT order_id FROM checkout_tokens WHERE token = ?",
+                    (idempotency_key,),
+                ).fetchone()
+                if existing_row:
+                    existing_order_id = existing_row["order_id"]
+                    existing_order = connection.execute(
+                        "SELECT * FROM orders WHERE id = ?", (existing_order_id,)
+                    ).fetchone()
+                    if existing_order:
+                        item_rows = connection.execute("""
+                            SELECT order_items.item_id, COALESCE(order_items.product_name, products.name) AS name,
+                                   order_items.quantity, order_items.unit_price_pence,
+                                   order_items.total_pence
+                            FROM order_items
+                            JOIN products ON products.id = order_items.item_id
+                            WHERE order_items.order_id = ?
+                            ORDER BY order_items.id
+                        """, (existing_order_id,)).fetchall()
+                        return {
+                            "order_id": existing_order["id"],
+                            "total_pence": existing_order["total_pence"],
+                            "status": existing_order["status"],
+                            "items": [dict(r) for r in item_rows],
+                            "tracking_code": "",
+                        }
+
             lines = []
             for item_id, quantity in combined.items():
                 product = connection.execute(
@@ -220,6 +264,11 @@ def checkout(items, database_path=DATABASE_PATH, *, customer_id=None):
                 (total, hashlib.sha256(tracking_code.encode()).hexdigest(), customer_id),
             )
             order_id = result.lastrowid
+            if idempotency_key:
+                connection.execute(
+                    "INSERT INTO checkout_tokens (token, order_id) VALUES (?, ?)",
+                    (idempotency_key, order_id),
+                )
             for line in lines:
                 connection.execute("""
                     UPDATE products SET stock = stock - ? WHERE id = ?
@@ -334,6 +383,16 @@ def update_order_status(order_id, new_status, database_path=DATABASE_PATH):
                     order_id,
                 ))
             else:
+                if new_status == "cancelled":
+                    item_rows = connection.execute("""
+                        SELECT item_id, quantity FROM order_items
+                        WHERE order_id = ?
+                    """, (order_id,)).fetchall()
+                    for item in item_rows:
+                        connection.execute("""
+                            UPDATE products SET stock = stock + ? WHERE id = ?
+                        """, (item["quantity"], item["item_id"]))
+
                 connection.execute("""
                     UPDATE orders
                     SET status = ?, status_updated_at = CURRENT_TIMESTAMP
