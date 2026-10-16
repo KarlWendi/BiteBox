@@ -1,18 +1,18 @@
 """Stage 1: display a fictional takeaway menu. Run with Python 3."""
 
 MENU = [
-    {"id": 1, "name": "Cheeseburger", "price_pence": 399},
-    {"id": 2, "name": "Fries", "price_pence": 199},
-    {"id": 3, "name": "Wrap", "price_pence": 449},
-    {"id": 13, "name": "Mozzarella Sticks", "price_pence": 499},
-    {"id": 5, "name": "Chicken Burger", "price_pence": 499},
-    {"id": 6, "name": "Veggie Burger", "price_pence": 479},
-    {"id": 7, "name": "Chicken Nuggets", "price_pence": 349},
-    {"id": 8, "name": "Onion Rings", "price_pence": 249},
-    {"id": 9, "name": "Side Salad", "price_pence": 299},
-    {"id": 10, "name": "Cola", "price_pence": 179},
-    {"id": 11, "name": "Bottled Water", "price_pence": 129},
-    {"id": 12, "name": "Chocolate Milkshake", "price_pence": 329},
+    {"id": 1, "name": "Cheeseburger", "price_pence": 399, "category": "Burgers"},
+    {"id": 2, "name": "Fries", "price_pence": 199, "category": "Sides"},
+    {"id": 3, "name": "Wrap", "price_pence": 449, "category": "Mains"},
+    {"id": 13, "name": "Mozzarella Sticks", "price_pence": 499, "category": "Sides"},
+    {"id": 5, "name": "Chicken Burger", "price_pence": 499, "category": "Burgers"},
+    {"id": 6, "name": "Veggie Burger", "price_pence": 479, "category": "Burgers"},
+    {"id": 7, "name": "Chicken Nuggets", "price_pence": 349, "category": "Sides"},
+    {"id": 8, "name": "Onion Rings", "price_pence": 249, "category": "Sides"},
+    {"id": 9, "name": "Side Salad", "price_pence": 299, "category": "Sides"},
+    {"id": 10, "name": "Cola", "price_pence": 179, "category": "Drinks"},
+    {"id": 11, "name": "Bottled Water", "price_pence": 129, "category": "Drinks"},
+    {"id": 12, "name": "Chocolate Milkshake", "price_pence": 329, "category": "Drinks"},
 ]
 
 

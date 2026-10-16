@@ -1,5 +1,6 @@
 """Public Streamlit storefront for the takeaway ordering simulator."""
 import os
+import secrets
 import streamlit as st
 from menu import format_price
 from tracking_ui import show_tracking, show_staff
@@ -98,8 +99,14 @@ if removed:
     st.warning('An item is no longer on the menu and was removed from your trolley. Please review your order.')
 
 st.markdown('<div id="menu"></div><div class="kicker">Explore the menu</div><div class="section-title">Made for every craving</div><div class="section-copy">Add your favourites straight to your trolley.</div>',unsafe_allow_html=True)
-for start in range(0,len(menu),4):
-    for column,item in zip(st.columns(4),menu[start:start+4]):
+
+categories = ["All"] + sorted(list({item.get("category", "Mains") for item in menu}))
+selected_category = st.radio("Category filter", categories, horizontal=True, label_visibility="collapsed")
+
+filtered_menu = [item for item in menu if selected_category == "All" or item.get("category", "Mains") == selected_category]
+
+for start in range(0,len(filtered_menu),4):
+    for column,item in zip(st.columns(4),filtered_menu[start:start+4]):
         stock=f"{item['stock']} available" if item["stock"] else "Sold out";stock_class="stock" if item["stock"] else "stock sold"
         with column:
             st.markdown(f'<div class="food-card"><div class="food-icon">{ICONS.get(item["name"],"🍽️")}</div><div class="food-name">{item["name"]}</div><div class="food-meta"><span class="food-price">{format_price(item["price_pence"])}</span><span class="{stock_class}">{stock}</span></div></div>',unsafe_allow_html=True)
@@ -156,7 +163,10 @@ with trolley_column:
                 if st.button(f"Remove {item['name']}",key=f"remove-{product_id}",width="stretch"):del st.session_state["trolley"][product_id];st.rerun()
         if st.button("Checkout",type="primary",width="stretch"):
             items=[{"item_id":product_id,"quantity":amount} for product_id,amount in trolley.items()]
-            try:order=request_api("POST","/checkout",json={"items":items},headers=account_headers())
+            token = st.session_state.setdefault("checkout_token", secrets.token_hex(16))
+            try:
+                order=request_api("POST","/checkout",json={"items":items,"idempotency_key":token},headers=account_headers())
+                st.session_state.pop("checkout_token", None)
             except APIError as error:st.error(str(error))
             else:
                 if not st.session_state.get('account_session'):

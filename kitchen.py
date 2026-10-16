@@ -4,34 +4,45 @@ PREP_MINUTES = {
     7: 4, 8: 3, 9: 2, 10: 1, 11: 1, 12: 2, 13: 4,
 }
 
-# A function to simulate the preparation queue for orders, 
-# assigning each order to the station that becomes free first and calculating waiting times 
-# and preparation times for each order, returning a summary of the simulation including average 
-# and maximum waiting times.
 
-def simulate_queue(orders, stations=2):
-    """Assign orders in ID order to the station that becomes free first."""
+def _calculate_prep_time(order):
+    items = order.get("items") or [{
+        "item_id": order["item_id"],
+        "quantity": order["quantity"],
+    }]
+    preparation = 0
+    for item in items:
+        item_id = item["item_id"]
+        if item_id not in PREP_MINUTES:
+            raise ValueError(f"No preparation time configured for product {item_id}.")
+        quantity = item["quantity"]
+        if type(quantity) is not int or quantity < 1:
+            raise ValueError("Queued orders must have positive whole-number quantities.")
+        preparation += PREP_MINUTES[item_id] * quantity
+    return preparation
+
+
+def simulate_queue(orders, stations=2, strategy="fifo"):
+    """Assign orders to the station that becomes free first using FIFO or SJF strategy."""
     if type(stations) is not int or not 1 <= stations <= 10:
         raise ValueError("Stations must be a whole number from 1 to 10.")
+    if strategy not in ("fifo", "sjf"):
+        raise ValueError("Strategy must be 'fifo' or 'sjf'.")
+
+    queued = [o for o in orders if o.get("status") == "queued"]
+    order_preps = []
+    for order in queued:
+        prep = _calculate_prep_time(order)
+        order_preps.append((order, prep))
+
+    if strategy == "fifo":
+        order_preps.sort(key=lambda pair: pair[0]["id"])
+    elif strategy == "sjf":
+        order_preps.sort(key=lambda pair: (pair[1], pair[0]["id"]))
 
     available_at = [0] * stations
     schedule = []
-    for order in sorted(orders, key=lambda order: order["id"]):
-        if order["status"] != "queued":
-            continue
-        items = order.get("items") or [{
-            "item_id": order["item_id"],
-            "quantity": order["quantity"],
-        }]
-        preparation = 0
-        for item in items:
-            item_id = item["item_id"]
-            if item_id not in PREP_MINUTES:
-                raise ValueError(f"No preparation time configured for product {item_id}.")
-            quantity = item["quantity"]
-            if type(quantity) is not int or quantity < 1:
-                raise ValueError("Queued orders must have positive whole-number quantities.")
-            preparation += PREP_MINUTES[item_id] * quantity
+    for order, preparation in order_preps:
         station = min(range(stations), key=lambda index: available_at[index])
         start = available_at[station]
         finish = start + preparation
@@ -44,10 +55,10 @@ def simulate_queue(orders, stations=2):
             "ready_after_minutes": finish,
         })
 
-# A variable that contains the length of the schedule as well as the total wait time. 
     count = len(schedule)
     total_wait = sum(entry["waiting_minutes"] for entry in schedule)
     return {
+        "strategy": strategy,
         "stations": stations,
         "order_count": count,
         "average_waiting_minutes": round(total_wait / count, 2) if count else 0,
@@ -56,4 +67,17 @@ def simulate_queue(orders, stations=2):
         ),
         "all_ready_after_minutes": max(available_at),
         "schedule": schedule,
+    }
+
+
+def simulate_queue_comparison(orders, stations=2):
+    """Compare FIFO and Shortest-Job-First (SJF) scheduling strategies."""
+    fifo_result = simulate_queue(orders, stations=stations, strategy="fifo")
+    sjf_result = simulate_queue(orders, stations=stations, strategy="sjf")
+    return {
+        "fifo": fifo_result,
+        "sjf": sjf_result,
+        "wait_saved_minutes": round(
+            fifo_result["average_waiting_minutes"] - sjf_result["average_waiting_minutes"], 2
+        ),
     }
