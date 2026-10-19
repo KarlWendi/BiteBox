@@ -120,7 +120,7 @@ class EmailAccountTests(unittest.TestCase):
     def test_old_database_migrates_without_replacing_accounts(self):
         from accounts import password_hash
         legacy_path = self.path.with_name('legacy.db')
-        with sqlite3.connect(legacy_path) as db:
+        with closing(sqlite3.connect(legacy_path)) as db, db:
             db.execute('CREATE TABLE users (id INTEGER PRIMARY KEY, username TEXT UNIQUE NOT NULL, password_hash TEXT NOT NULL, role TEXT NOT NULL, active INTEGER NOT NULL DEFAULT 1)')
             db.execute('INSERT INTO users VALUES (42, ?, ?, ?, 1)', ('legacycustomer', password_hash(PASSWORD), 'customer'))
         with TestClient(create_app(legacy_path)) as migrated:
