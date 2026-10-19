@@ -71,7 +71,9 @@ class DatabaseTests(unittest.TestCase):
                 """)
         finally:
             connection.close()
-        with self.assertRaises(sqlite3.IntegrityError):
+        # Both drivers must roll back; libSQL does not expose a structured
+        # constraint code for a trigger's custom error message.
+        with self.assertRaises(sqlite3.DatabaseError):
             place_order(1, 2, self.path)
         self.assertEqual(get_menu(self.path)[0]["stock"], 20)
         self.assertEqual(get_orders(self.path), [])

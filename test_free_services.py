@@ -43,6 +43,16 @@ class FreeServiceTests(unittest.TestCase):
             call(Mock(side_effect=ValueError('network failure secret-token')))
         self.assertNotIn('secret-token', str(result.exception))
 
+    def test_only_known_lock_rejections_are_retried(self):
+        operation = Mock(side_effect=[ValueError('database is locked'), 'saved'])
+        with patch('remote_database.time.sleep'):
+            self.assertEqual(call(operation), 'saved')
+        self.assertEqual(operation.call_count, 2)
+        uncertain_write = Mock(side_effect=ValueError('connection lost'))
+        with self.assertRaises(sqlite3.OperationalError):
+            call(uncertain_write)
+        uncertain_write.assert_called_once()
+
     def test_missing_token_and_insecure_url_fail_closed(self):
         with patch.dict(os.environ, {}, clear=True):
             with self.assertRaises(RuntimeError):

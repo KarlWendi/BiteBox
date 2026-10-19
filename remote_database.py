@@ -1,19 +1,26 @@
 """Adapt libSQL's tuple rows and errors to the application's SQLite interface."""
 import os
 import sqlite3
+import time
 from collections.abc import Mapping
 from urllib.parse import urlsplit
 
 
 def call(operation, *args, **kwargs):
-    try:
-        return operation(*args, **kwargs)
-    except ValueError as error:
-        # libsql reports database errors as ValueError. Never expose credentials
-        # or remote response bodies in application exceptions.
-        if 'constraint failed' in str(error).lower():
-            raise sqlite3.IntegrityError('Database constraint failed.') from None
-        raise sqlite3.OperationalError('Database is unavailable. Please try again.') from None
+    deadline = time.monotonic() + 15
+    while True:
+        try:
+            return operation(*args, **kwargs)
+        except ValueError as error:
+            # Only retry a definite SQLite lock rejection, never an uncertain
+            # network failure: a remote write may already have committed.
+            message = str(error).lower()
+            if message == 'database is locked' and time.monotonic() < deadline:
+                time.sleep(0.05)  # Release the GIL so the other writer can finish.
+                continue
+            if 'constraint failed' in message:
+                raise sqlite3.IntegrityError('Database constraint failed.') from None
+            raise sqlite3.OperationalError('Database is unavailable. Please try again.') from None
 
 
 class Row(Mapping):
@@ -102,6 +109,6 @@ def connect_libsql(database, remote=True):
         import libsql
     except ImportError:
         raise RuntimeError('The libsql driver is required; use the Linux deployment environment.') from None
-    connection = Connection(call(libsql.connect, str(database), auth_token=token, timeout=15))
+    connection = Connection(call(libsql.connect, str(database), auth_token=token, timeout=0.1))
     connection.execute('PRAGMA foreign_keys = ON')
     return connection
