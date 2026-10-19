@@ -1,6 +1,7 @@
 """HTTP boundary: the website talks to the API, never directly to SQLite."""
 import os
 import time
+import sqlite3
 import httpx
 
 API_URL = os.environ.get("TAKEAWAY_API_URL", "http://127.0.0.1:8000").rstrip("/")
@@ -17,7 +18,10 @@ class APIError(Exception):
 def request_api(method, path, **kwargs):
     method = method.upper()
     if os.environ.get("TAKEAWAY_EMBEDDED_API") == "1" or os.environ.get("TAKEAWAY_TEMPORARY_DEMO") == "1":
-        return _response_data(_request_embedded(method, path, **kwargs))
+        try:
+            return _response_data(_request_embedded(method, path, **kwargs))
+        except sqlite3.OperationalError:
+            raise APIError('Saved data is temporarily unavailable. Please try again shortly.') from None
 
     attempts = READ_ATTEMPTS if method == "GET" else 1
 

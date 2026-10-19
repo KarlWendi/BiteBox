@@ -23,7 +23,10 @@ class Row(Mapping):
     def __getitem__(self, key):
         if isinstance(key, int):
             return self.values[key]
-        return self.values[self.columns.index(key)]
+        try:
+            return self.values[self.columns.index(key)]
+        except ValueError:
+            raise KeyError(key) from None
 
     def __iter__(self):
         return iter(self.columns)

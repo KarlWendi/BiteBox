@@ -17,6 +17,8 @@ from kitchen import PREP_MINUTES
 DATABASE_PATH = os.environ.get("TURSO_DATABASE_URL") or Path(os.environ.get("TAKEAWAY_DATABASE_PATH") or Path(__file__).resolve().with_name("restaurant.db"))
 if os.environ.get('TAKEAWAY_REQUIRE_REMOTE_DATABASE') == '1' and not os.environ.get('TURSO_DATABASE_URL'):
     raise RuntimeError('TURSO_DATABASE_URL is required; refusing to create temporary accounts.')
+if os.environ.get('TURSO_DATABASE_URL') and not os.environ['TURSO_DATABASE_URL'].startswith(('libsql://', 'https://')):
+    raise RuntimeError('TURSO_DATABASE_URL must be a secure remote database URL.')
 INITIAL_STOCK = {1: 20, 2: 30, 3: 15, 4: 20, 5: 20, 6: 15, 7: 25, 8: 25, 9: 15, 10: 40, 11: 40, 12: 20, 13: 20}
 
 # Custom exceptions for specific error scenarios in the database operations, allowing the calling code to handle these cases appropriately.

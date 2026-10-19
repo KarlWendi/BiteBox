@@ -6,11 +6,21 @@ from unittest.mock import Mock, patch
 
 import httpx
 from fastapi import HTTPException
+from fastapi.testclient import TestClient
+from api import create_app
 from account_email import send_email
 from remote_database import Connection, call, connect_libsql
 
 
 class FreeServiceTests(unittest.TestCase):
+    def test_database_outage_has_safe_api_message(self):
+        client = TestClient(create_app())
+        self.addCleanup(client.close)
+        with patch('api.get_menu', side_effect=sqlite3.OperationalError('private remote details')):
+            response = client.get('/menu')
+        self.assertEqual(response.status_code, 503)
+        self.assertNotIn('private remote details', response.text)
+
     def test_rows_transactions_and_saved_insert_id(self):
         db = Connection(sqlite3.connect(':memory:'))
         self.addCleanup(db.close)

@@ -2,9 +2,11 @@
 # view orders, and place new orders, with input validation and error handling for insufficient stock and item not found scenarios.
 
 from contextlib import asynccontextmanager
+import sqlite3
 
 # Standard library imports
 from fastapi import Depends, FastAPI, HTTPException, Query
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field
 
 # Local imports
@@ -68,6 +70,11 @@ def create_app(database_path=DATABASE_PATH):
         lifespan=lifespan,
     )
     application.state.database_path = database_path
+    @application.exception_handler(sqlite3.OperationalError)
+    async def database_unavailable(request, error):
+        return JSONResponse(status_code=503, content={'detail':
+            'Saved data is temporarily unavailable. If you submitted an order, check your orders before trying again.'})
+
     application.include_router(account_router())
     from account_email import email_router
     application.include_router(email_router())
