@@ -2,3 +2,4 @@ fastapi==0.142.2
 uvicorn==0.53.0
 httpx==0.28.1
 streamlit==1.64.0
+libsql==0.1.11; sys_platform == 'linux'

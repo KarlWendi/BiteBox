@@ -6,6 +6,7 @@ import secrets
 import smtplib
 import ssl
 import time
+import httpx
 from contextlib import closing
 from email.message import EmailMessage
 from urllib.parse import urlencode, urlsplit
@@ -27,7 +28,11 @@ def normalise_email(value):
 
 
 def mail_ready():
-    if not all(os.environ.get(key) for key in ('SMTP_HOST', 'SMTP_FROM', 'TAKEAWAY_WEBSITE_URL')):
+    provider = os.environ.get('TAKEAWAY_EMAIL_PROVIDER', 'smtp')
+    if provider not in ('smtp', 'brevo'):
+        raise HTTPException(503, 'Account email provider is not configured correctly.')
+    required = ('BREVO_API_KEY', 'TAKEAWAY_EMAIL_FROM') if provider == 'brevo' else ('SMTP_HOST', 'SMTP_FROM')
+    if not all(os.environ.get(key) for key in (*required, 'TAKEAWAY_WEBSITE_URL')):
         raise HTTPException(503, 'Account emails are not configured yet. Please contact the site administrator.')
     url = urlsplit(os.environ['TAKEAWAY_WEBSITE_URL'])
     if url.scheme != 'https' and not (url.scheme == 'http' and url.hostname in ('localhost', '127.0.0.1')):
@@ -39,11 +44,25 @@ def send_email(address, kind, token):
     base = os.environ['TAKEAWAY_WEBSITE_URL'].rstrip('/') + '/'
     link = base + '?' + urlencode({kind + '_account': token})
     message = EmailMessage()
-    message['From'] = os.environ['SMTP_FROM']
+    provider = os.environ.get('TAKEAWAY_EMAIL_PROVIDER', 'smtp')
+    message['From'] = os.environ['TAKEAWAY_EMAIL_FROM'] if provider == 'brevo' else os.environ['SMTP_FROM']
     message['To'] = address
     message['Subject'] = 'Verify your BiteBox email' if kind == 'verify' else 'Reset your BiteBox password'
     lifetime = '24 hours' if kind == 'verify' else '30 minutes'
     message.set_content(f"{message['Subject']}\n\nOpen this link: {link}\n\nIt expires in {lifetime} and works once. If you did not request this email, ignore it.")
+    if provider == 'brevo':
+        try:
+            response = httpx.post('https://api.brevo.com/v3/smtp/email',
+                headers={'api-key': os.environ['BREVO_API_KEY'], 'accept': 'application/json'},
+                json={'sender': {'name': 'BiteBox', 'email': os.environ['TAKEAWAY_EMAIL_FROM']},
+                      'to': [{'email': address}], 'subject': str(message['Subject']),
+                      'textContent': message.get_content()}, timeout=15)
+            response.raise_for_status()
+            if response.status_code != 201 or not response.json().get('messageId'):
+                raise ValueError('Email was not accepted.')
+        except (httpx.HTTPError, ValueError, AttributeError):
+            raise HTTPException(503, 'Email delivery failed. Please try requesting a new link shortly.') from None
+        return
     try:
         port = int(os.environ.get('SMTP_PORT', '465'))
         if port == 465:

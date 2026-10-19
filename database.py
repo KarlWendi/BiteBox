@@ -14,7 +14,9 @@ from kitchen import PREP_MINUTES
 
 
 # Keep the database beside this file, regardless of the terminal's folder.
-DATABASE_PATH = Path(os.environ.get("TAKEAWAY_DATABASE_PATH") or Path(__file__).resolve().with_name("restaurant.db"))
+DATABASE_PATH = os.environ.get("TURSO_DATABASE_URL") or Path(os.environ.get("TAKEAWAY_DATABASE_PATH") or Path(__file__).resolve().with_name("restaurant.db"))
+if os.environ.get('TAKEAWAY_REQUIRE_REMOTE_DATABASE') == '1' and not os.environ.get('TURSO_DATABASE_URL'):
+    raise RuntimeError('TURSO_DATABASE_URL is required; refusing to create temporary accounts.')
 INITIAL_STOCK = {1: 20, 2: 30, 3: 15, 4: 20, 5: 20, 6: 15, 7: 25, 8: 25, 9: 15, 10: 40, 11: 40, 12: 20, 13: 20}
 
 # Custom exceptions for specific error scenarios in the database operations, allowing the calling code to handle these cases appropriately.
@@ -26,7 +28,13 @@ class InsufficientStockError(ValueError):
 
 # A function to connect to the SQLite database, enabling foreign key constraints and returning a connection object for executing SQL queries.
 def connect(database_path=DATABASE_PATH):
+    if str(database_path).startswith(('libsql://', 'https://', 'http://')):
+        from remote_database import connect_libsql
+        return connect_libsql(database_path)
     Path(database_path).parent.mkdir(parents=True, exist_ok=True)
+    if os.environ.get('TAKEAWAY_SQLITE_DRIVER') == 'libsql':
+        from remote_database import connect_libsql
+        return connect_libsql(database_path, remote=False)
     connection = sqlite3.connect(database_path, timeout=15)
     connection.row_factory = sqlite3.Row
     connection.execute("PRAGMA foreign_keys = ON")

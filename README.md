@@ -27,7 +27,7 @@ The project also explores how the number of kitchen stations affects waiting tim
 - Staff access is separate from customer tracking. Staff and administrators who sign in with an individual account see a Kitchen controls link; the legacy shared staff login remains available.
 - The default light theme matches the storefront, including form fields and focus indicators.
 
-Email verification and password recovery are implemented behind `TAKEAWAY_EMAIL_ENABLED=1`; enabling them requires the SMTP and persistent-storage setup in [DEPLOYMENT.md](DEPLOYMENT.md#persistent-accounts-with-email-prepared-upgrade). Existing accounts retain their usernames, passwords and order history. The hosted upgrade still needs configuration and live delivery/restart checks. Payment processing and protection against duplicate checkout submissions remain future work.
+Email verification and password recovery are implemented behind `TAKEAWAY_EMAIL_ENABLED=1`; the prepared free setup uses Render Free, Turso Free persistent storage and Brevo Free account emails. Follow [DEPLOYMENT.md](DEPLOYMENT.md#persistent-accounts-with-email-prepared-upgrade), including backing up and migrating hosted data before changing storage. Keep paid upgrades and overages disabled. The hosted upgrade still needs provider accounts, configuration and live delivery/restart checks. Payment processing and protection against duplicate checkout submissions remain future work.
 
 **[Try the live demo](https://takeaway-ordering-demo.onrender.com/)** — no Python installation needed. Free hosting may take about a minute to wake up. Shared fictional stock and orders reset when the service restarts.
 

@@ -1,18 +1,14 @@
-# Prepared paid configuration. Review charges before applying this blueprint.
-# Prefer upgrading the existing website service to preserve its URL.
+# Free configuration. Configure Turso and Brevo first; preserve hosted data.
+# Update the existing website service to preserve its URL. No paid disks.
 services:
   - type: web
     name: takeaway-ordering-demo
     runtime: python
-    plan: 0.5c-512mb
+    plan: free
     numInstances: 1
     buildCommand: pip install -r requirements.txt
     startCommand: streamlit run website.py --server.address 0.0.0.0 --server.port $PORT --server.headless true --browser.gatherUsageStats false
     healthCheckPath: /_stcore/health
-    disk:
-      name: bitebox-data
-      mountPath: /var/data
-      sizeGB: 1
     envVars:
       - key: PYTHON_VERSION
         value: 3.12.12
@@ -20,8 +16,12 @@ services:
         value: "1"
       - key: TAKEAWAY_TEMPORARY_DEMO
         value: "0"
-      - key: TAKEAWAY_DATABASE_PATH
-        value: /var/data/restaurant.db
+      - key: TAKEAWAY_REQUIRE_REMOTE_DATABASE
+        value: "1"
+      - key: TURSO_DATABASE_URL
+        sync: false
+      - key: TURSO_AUTH_TOKEN
+        sync: false
       - key: TAKEAWAY_EMAIL_ENABLED
         value: "1"
       - key: TAKEAWAY_WEBSITE_URL
@@ -30,13 +30,9 @@ services:
         sync: false
       - key: TAKEAWAY_ADMIN_PASSWORD
         sync: false
-      - key: SMTP_HOST
-        value: smtp.gmail.com
-      - key: SMTP_PORT
-        value: "465"
-      - key: SMTP_USERNAME
+      - key: TAKEAWAY_EMAIL_PROVIDER
+        value: brevo
+      - key: BREVO_API_KEY
         sync: false
-      - key: SMTP_PASSWORD
-        sync: false
-      - key: SMTP_FROM
+      - key: TAKEAWAY_EMAIL_FROM
         sync: false

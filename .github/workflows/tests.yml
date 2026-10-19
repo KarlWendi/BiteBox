@@ -27,3 +27,8 @@ jobs:
         run: python -m unittest discover -v
       - name: Run queue demonstration
         run: python queue_demo.py
+      - name: Test libSQL compatibility on the deployment Python version
+        if: matrix.python-version == '3.12'
+        env:
+          TAKEAWAY_SQLITE_DRIVER: libsql
+        run: python -m unittest discover -v
