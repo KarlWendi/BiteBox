@@ -19,17 +19,71 @@ def clear_account():
         st.session_state.pop(key, None)
 
 
-def valid_registration(username, password, confirm):
+def valid_registration(username, password, confirm, name, surname, email, phone_number):
     if not re.fullmatch(r'[a-z0-9][a-z0-9_.-]{2,39}', username.strip().lower()):
         st.error('Choose a username with 3–40 characters. Start with a letter or number; use only letters, numbers, dots, hyphens or underscores.')
         return False
-    if not 12 <= len(password) <= 128:
-        st.error('Use a password between 12 and 128 characters.')
+    if not name.strip() or not surname.strip():
+        st.error('Please enter your first name and surname.')
+        return False
+    if not re.fullmatch(r'[^@\s]+@[^@\s]+\.[^@\s]+', email.strip().lower()):
+        st.error('Please enter a valid email address.')
+        return False
+    if not re.fullmatch(r'\+?[0-9\s\-\(\)]{7,20}', phone_number.strip()):
+        st.error('Please enter a valid phone number.')
+        return False
+    if not (8 <= len(password) <= 128):
+        st.error('Use a password between 8 and 128 characters.')
+        return False
+    if not re.search(r'[A-Z]', password):
+        st.error('Password must contain at least one uppercase letter.')
+        return False
+    if not re.search(r'[a-z]', password):
+        st.error('Password must contain at least one lowercase letter.')
+        return False
+    if not re.search(r'[0-9]', password):
+        st.error('Password must contain at least one digit.')
+        return False
+    if not re.search(r'[^a-zA-Z0-9]', password):
+        st.error('Password must contain at least one special character.')
         return False
     if password != confirm:
         st.error('The passwords do not match.')
         return False
     return True
+
+
+def show_email_verification():
+    st.subheader('Verify your email')
+    st.caption('Enter your registered username or email address and the verification code.')
+
+    prefilled_identifier = st.session_state.get('pending_verification_user', '')
+    prefilled_code = st.session_state.get('pending_verification_code', '')
+    if prefilled_code:
+        st.info(f"Your verification code is: {prefilled_code}")
+
+    with st.form('verify_email_form'):
+        identifier = st.text_input('Username or Email address', value=prefilled_identifier)
+        code = st.text_input('Verification code', value=prefilled_code)
+        if st.form_submit_button('Verify Email'):
+            try:
+                res = web_client.request_api('POST', '/auth/verify-email', json={
+                    'username_or_email': identifier,
+                    'code': code
+                })
+            except APIError as error:
+                st.error(str(error))
+            else:
+                st.session_state.pop('pending_verification_user', None)
+                st.session_state.pop('pending_verification_code', None)
+                st.session_state['account_notice'] = res.get('message', 'Email verified successfully. You may now sign in.')
+                st.session_state['account_page'] = True
+                st.rerun()
+    if st.button('Back to sign in', type='tertiary'):
+        st.session_state.pop('pending_verification_user', None)
+        st.session_state.pop('pending_verification_code', None)
+        st.session_state['account_page'] = True
+        st.rerun()
 
 
 def show_account():
@@ -48,7 +102,8 @@ def show_account():
                 st.rerun()
             return
         session['user'] = user
-        st.write(f"Signed in as {user['username']} · {user['role'].title()}")
+        st.write(f"Signed in as **{user['name']} {user['surname']}** (@{user['username']}) · {user['role'].title()}")
+        st.caption(f"Email: {user['email']} · Phone: {user['phone_number']}")
         if st.button('Sign out'):
             try:
                 web_client.request_api('POST', '/auth/logout', headers=account_headers())
@@ -63,8 +118,8 @@ def show_account():
                 new = st.text_input('New password', type='password')
                 confirm = st.text_input('Confirm new password', type='password')
                 if st.form_submit_button('Update password'):
-                    if not 12 <= len(new) <= 128:
-                        st.error('Use a password between 12 and 128 characters.')
+                    if not (8 <= len(new) <= 128):
+                        st.error('Use a password between 8 and 128 characters.')
                     elif new != confirm:
                         st.error('The new passwords do not match.')
                     else:
@@ -82,18 +137,23 @@ def show_account():
     else:
         st.caption('Sign in for saved order history. Staff and administrators can sign in here too, or you can order as a guest.')
         with st.form('account_login'):
-            username = st.text_input('Account username')
+            username = st.text_input('Account username or email')
             password = st.text_input('Account password', type='password')
             if st.form_submit_button('Sign in'):
                 try:
                     session = web_client.request_api('POST', '/auth/login', json={'username': username, 'password': password})
                 except APIError as error:
                     st.error(str(error))
+                    if 'Email not verified' in str(error):
+                        st.session_state['pending_verification_user'] = username
                 else:
                     st.session_state['account_session'] = session
                     st.session_state.pop('staff_auth', None)
                     st.session_state.pop('staff_expires', None)
                     st.rerun()
+        if st.button('Need to verify your email?', type='tertiary'):
+            st.session_state['account_page'] = 'verify'
+            st.rerun()
         st.caption('New administrator? Ask an existing administrator for an invitation link. Public registration creates a customer account.')
         if st.button("Don't have an account? Create a customer account", type='tertiary'):
             st.session_state['account_page'] = 'register'
@@ -105,20 +165,30 @@ def show_registration():
     if st.button('Already have an account? Sign in', type='tertiary'):
         st.session_state['account_page'] = True
         st.rerun()
-    st.caption('Username: 3–40 letters, numbers, dots, hyphens or underscores. Password: 12–128 characters.')
+    st.caption('Username: 3–40 letters/numbers/dots/hyphens. Password: 8–128 characters with upper, lower, digit and special char.')
     with st.form('register_customer'):
+        name = st.text_input('First name')
+        surname = st.text_input('Surname')
+        email = st.text_input('Email address')
+        phone_number = st.text_input('Phone number')
         username = st.text_input('Choose a username')
-        password = st.text_input('Choose a password', type='password', help='Use at least 12 characters.')
+        password = st.text_input('Choose a password', type='password', help='At least 8 characters with upper, lower, number, special char.')
         confirm = st.text_input('Confirm password', type='password')
         if st.form_submit_button('Create account'):
-            if valid_registration(username, password, confirm):
+            if valid_registration(username, password, confirm, name, surname, email, phone_number):
                 try:
-                    web_client.request_api('POST', '/auth/register', json={'username': username, 'password': password})
+                    res = web_client.request_api('POST', '/auth/register', json={
+                        'username': username, 'password': password,
+                        'name': name.strip(), 'surname': surname.strip(),
+                        'email': email.strip(), 'phone_number': phone_number.strip()
+                    })
                 except APIError as error:
                     st.error(str(error))
                 else:
-                    st.session_state['account_page'] = True
-                    st.session_state['account_notice'] = 'Account created. You can now sign in.'
+                    st.session_state['pending_verification_user'] = username
+                    st.session_state['pending_verification_code'] = res.get('verification_code', '')
+                    st.session_state['account_page'] = 'verify'
+                    st.session_state['account_notice'] = f"Account created! Your verification code is {res.get('verification_code', '')}. Please verify your email to activate your account."
                     st.rerun()
 
 
@@ -132,22 +202,38 @@ def show_admin():
             st.error(str(error))
             return
         st.subheader('Accounts')
-        st.dataframe([{'Username': user['username'], 'Role': user['role'],
-                       'Access': 'Active' if user['active'] else 'Disabled'} for user in users], hide_index=True)
+        st.dataframe([{
+            'Name': f"{user.get('name', '')} {user.get('surname', '')}".strip() or '—',
+            'Username': user['username'],
+            'Email': user.get('email', '') or '—',
+            'Phone': user.get('phone_number', '') or '—',
+            'Role': user['role'].title(),
+            'Verified': 'Yes' if user.get('email_verified') else 'No',
+            'Access': 'Active' if user['active'] else 'Disabled'
+        } for user in users], hide_index=True)
         with st.form('create_staff', clear_on_submit=True):
-            username = st.text_input('New staff username')
-            password = st.text_input('Temporary staff password', type='password', help='At least 12 characters. Ask the staff member to change it after signing in.')
+            st.caption('Create a new staff account.')
+            name = st.text_input('First name', key='staff_name')
+            surname = st.text_input('Surname', key='staff_surname')
+            email = st.text_input('Email address', key='staff_email')
+            phone_number = st.text_input('Phone number', key='staff_phone')
+            username = st.text_input('New staff username', key='staff_username')
+            password = st.text_input('Temporary staff password', type='password', help='At least 8 chars with upper, lower, digit and special char.')
+            confirm = st.text_input('Confirm staff password', type='password')
             if st.form_submit_button('Create staff account'):
-                if not 12 <= len(password) <= 128:
-                    st.error('Use a password between 12 and 128 characters.')
-                    return
-                try:
-                    web_client.request_api('POST', '/admin/staff', headers=account_headers(), json={'username': username, 'password': password})
-                except APIError as error:
-                    st.error(str(error))
-                else:
-                    st.session_state['account_notice'] = 'Staff account created.'
-                    st.rerun()
+                if valid_registration(username, password, confirm, name, surname, email, phone_number):
+                    try:
+                        res = web_client.request_api('POST', '/admin/staff', headers=account_headers(), json={
+                            'username': username, 'password': password,
+                            'name': name.strip(), 'surname': surname.strip(),
+                            'email': email.strip(), 'phone_number': phone_number.strip()
+                        })
+                    except APIError as error:
+                        st.error(str(error))
+                    else:
+                        code = res.get('verification_code', '')
+                        st.session_state['account_notice'] = f"Staff account created! Verification code is {code}."
+                        st.rerun()
 
         for user in users:
             if user['role'] == 'admin':
@@ -219,7 +305,7 @@ def show_invitations():
 
 def show_invitation_registration():
     st.title('Create your administrator account')
-    st.caption('Use the invitation from your administrator to create your own sign-in. Username: 3–40 letters, numbers, dots, hyphens or underscores. Password: 12–128 characters.')
+    st.caption('Use the invitation link and admin passcode to create your administrator sign-in. Username: 3–40 letters/numbers/dots/hyphens. Password: 8–128 characters with upper, lower, digit and special char.')
     if st.session_state.get('account_session'):
         st.info('You are already signed in. Sign out below to create a separate administrator account. Your invitation will stay open.')
         if st.button('Sign out and continue with invitation'):
@@ -234,21 +320,33 @@ def show_invitation_registration():
                 st.rerun()
     else:
         with st.form('accept_admin_invitation'):
+            name = st.text_input('First name')
+            surname = st.text_input('Surname')
+            email = st.text_input('Email address')
+            phone_number = st.text_input('Phone number')
             username = st.text_input('Admin username')
+            admin_passcode = st.text_input('Admin passcode', type='password')
             password = st.text_input('Admin password', type='password')
             confirm = st.text_input('Confirm admin password', type='password')
             if st.form_submit_button('Create administrator account'):
-                if valid_registration(username, password, confirm):
+                if not admin_passcode.strip():
+                    st.error('Please enter the admin passcode.')
+                elif valid_registration(username, password, confirm, name, surname, email, phone_number):
                     try:
-                        web_client.request_api('POST', '/auth/accept-invitation', json={
+                        res = web_client.request_api('POST', '/auth/accept-invitation', json={
                             'username': username, 'password': password,
+                            'name': name.strip(), 'surname': surname.strip(),
+                            'email': email.strip(), 'phone_number': phone_number.strip(),
+                            'admin_passcode': admin_passcode.strip(),
                             'token': st.session_state['admin_invite_token']})
                     except APIError as error:
                         st.error(str(error))
                     else:
                         st.session_state.pop('admin_invite_token', None)
-                        st.session_state['account_page'] = True
-                        st.session_state['account_notice'] = 'Administrator account created. Sign in with your new credentials.'
+                        st.session_state['pending_verification_user'] = username
+                        st.session_state['pending_verification_code'] = res.get('verification_code', '')
+                        st.session_state['account_page'] = 'verify'
+                        st.session_state['account_notice'] = f"Administrator account created! Your verification code is {res.get('verification_code', '')}. Please verify your email to activate your account."
                         st.rerun()
     if st.button('Return to sign in', type='tertiary'):
         st.session_state.pop('admin_invite_token', None)
