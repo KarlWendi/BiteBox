@@ -196,6 +196,11 @@ class LoginRequest(BaseModel):
     password: str = Field(min_length=1, max_length=128)
 
 
+class RequestCodeRequest(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+    username_or_email: str = Field(min_length=1, max_length=128)
+
+
 class VerifyEmailRequest(BaseModel):
     model_config = ConfigDict(extra='forbid')
     username_or_email: str = Field(min_length=1, max_length=128)
@@ -345,6 +350,23 @@ def account_router():
             throttle(connection, [('register:' + address, 30)])
             return create_user(connection, credentials, 'customer')
 
+    @router.post('/auth/request-verification-code')
+    def request_verification_code(body: RequestCodeRequest, request: Request):
+        identifier = body.username_or_email.strip().lower()
+        with closing(connect(request.app.state.database_path)) as connection:
+            address = request.client.host if request.client else 'unknown'
+            throttle(connection, [('request-code:' + identifier, 10), ('request-code:' + address, 30)])
+            user = connection.execute('SELECT * FROM users WHERE username = ? OR email = ?', (identifier, identifier)).fetchone()
+            if not user:
+                raise HTTPException(404, 'Account not found. Please check your email address or username.')
+            if user['email_verified']:
+                return {'sent': False, 'verified': True, 'message': 'Email address is already verified. You may sign in.'}
+            with connection:
+                code = create_verification_code(connection, user['id'])
+                send_verification_email(user['email'], code)
+            return {'sent': True, 'email': user['email'], 'username': user['username'],
+                    'message': f"A verification code has been sent to {user['email']}."}
+
     @router.post('/auth/verify-email')
     def verify_email(body: VerifyEmailRequest, request: Request):
         identifier = body.username_or_email.strip().lower()
@@ -391,6 +413,19 @@ def account_router():
     def me(user=Depends(require_account)):
         return user
 
+    @router.delete('/auth/me')
+    def delete_own_account(request: Request, user=Depends(require_account)):
+        with closing(connect(request.app.state.database_path)) as connection, connection:
+            connection.execute('BEGIN IMMEDIATE')
+            if user['role'] == 'admin':
+                admin_count = connection.execute("SELECT COUNT(*) FROM users WHERE role = 'admin'").fetchone()[0]
+                if admin_count <= 1:
+                    raise HTTPException(409, 'Cannot delete the sole administrator account.')
+            connection.execute('DELETE FROM sessions WHERE user_id = ?', (user['id'],))
+            connection.execute('DELETE FROM email_verifications WHERE user_id = ?', (user['id'],))
+            connection.execute('DELETE FROM users WHERE id = ?', (user['id'],))
+        return {'deleted': True, 'message': 'Account deleted successfully.'}
+
     @router.post('/auth/logout')
     def logout(request: Request):
         authorization = request.headers.get('Authorization', '')
@@ -422,6 +457,20 @@ def account_router():
     def create_staff(credentials: StaffCredentials, request: Request):
         with closing(connect(request.app.state.database_path)) as connection:
             return create_user(connection, credentials, 'staff')
+
+    @router.delete('/admin/users/{user_id}', dependencies=[Depends(require_admin)])
+    def delete_user_account(user_id: int, request: Request):
+        with closing(connect(request.app.state.database_path)) as connection, connection:
+            connection.execute('BEGIN IMMEDIATE')
+            target = connection.execute('SELECT * FROM users WHERE id = ?', (user_id,)).fetchone()
+            if not target:
+                raise HTTPException(404, 'Account not found.')
+            if target['role'] == 'admin':
+                raise HTTPException(409, 'Administrator accounts cannot be deleted here.')
+            connection.execute('DELETE FROM sessions WHERE user_id = ?', (user_id,))
+            connection.execute('DELETE FROM email_verifications WHERE user_id = ?', (user_id,))
+            connection.execute('DELETE FROM users WHERE id = ?', (user_id,))
+        return {'deleted': True, 'id': user_id}
 
     @router.patch('/admin/users/{user_id}', dependencies=[Depends(require_admin)])
     def update_user_state(user_id: int, body: AccountState, request: Request):

@@ -37,6 +37,7 @@ class AccountWebsiteTests(unittest.TestCase):
         self.fill('Admin password', PASSWORD)
         self.fill('Confirm admin password', PASSWORD)
         self.click('Create administrator account')
+        self.click('Next (Send verification code)')
         with closing(connect(self.client.app.state.database_path)) as connection:
             code = connection.execute('SELECT code FROM email_verifications ORDER BY id DESC LIMIT 1').fetchone()[0]
         self.fill('Verification code', code)
@@ -62,6 +63,7 @@ class AccountWebsiteTests(unittest.TestCase):
         self.fill('Admin password', PASSWORD)
         self.fill('Confirm admin password', PASSWORD)
         self.click('Create administrator account')
+        self.click('Next (Send verification code)')
         with closing(connect(self.client.app.state.database_path)) as connection:
             code = connection.execute('SELECT code FROM email_verifications ORDER BY id DESC LIMIT 1').fetchone()[0]
         self.fill('Verification code', code)
@@ -86,6 +88,7 @@ class AccountWebsiteTests(unittest.TestCase):
         self.assertIn('email', self.app.error[0].value.lower())
         self.fill('Email address', 'valid@example.com')
         self.click('Create account')
+        self.click('Next (Send verification code)')
         with closing(connect(self.client.app.state.database_path)) as connection:
             code = connection.execute('SELECT code FROM email_verifications ORDER BY id DESC LIMIT 1').fetchone()[0]
         self.fill('Verification code', code)
@@ -113,6 +116,7 @@ class AccountWebsiteTests(unittest.TestCase):
         self.fill('Admin username', 'correctedadmin')
         self.fill('Email address', 'correctedadmin@example.com')
         self.click('Create administrator account')
+        self.click('Next (Send verification code)')
         with closing(connect(self.client.app.state.database_path)) as connection:
             code = connection.execute('SELECT code FROM email_verifications ORDER BY id DESC LIMIT 1').fetchone()[0]
         self.fill('Verification code', code)
@@ -177,6 +181,7 @@ class AccountWebsiteTests(unittest.TestCase):
         self.fill('Choose a password', PASSWORD)
         self.fill('Confirm password', PASSWORD)
         self.click('Create account')
+        self.click('Next (Send verification code)')
         with closing(connect(self.client.app.state.database_path)) as connection:
             code = connection.execute('SELECT code FROM email_verifications ORDER BY id DESC LIMIT 1').fetchone()[0]
         self.fill('Verification code', code)
