@@ -28,6 +28,33 @@ def password_matches(password, stored):
     return secrets.compare_digest(actual, expected)
 
 
+def validate_password(password):
+    if not (8 <= len(password) <= 128):
+        raise HTTPException(422, 'Password must be between 8 and 128 characters.')
+    if not re.search(r'[A-Z]', password):
+        raise HTTPException(422, 'Password must contain at least one uppercase letter.')
+    if not re.search(r'[a-z]', password):
+        raise HTTPException(422, 'Password must contain at least one lowercase letter.')
+    if not re.search(r'[0-9]', password):
+        raise HTTPException(422, 'Password must contain at least one digit.')
+    if not re.search(r'[^a-zA-Z0-9]', password):
+        raise HTTPException(422, 'Password must contain at least one special character.')
+
+
+def normalise_email(email):
+    email = email.strip().lower()
+    if not re.fullmatch(r'[^@\s]+@[^@\s]+\.[^@\s]+', email):
+        raise HTTPException(422, 'Please enter a valid email address.')
+    return email
+
+
+def normalise_phone(phone):
+    phone = phone.strip()
+    if not re.fullmatch(r'\+?[0-9\s\-\(\)]{7,20}', phone):
+        raise HTTPException(422, 'Please enter a valid phone number.')
+    return phone
+
+
 def normalise_username(username):
     username = username.strip().lower()
     if not re.fullmatch(r'[a-z0-9][a-z0-9_.-]{2,39}', username):
@@ -39,8 +66,33 @@ def initialise_accounts(connection):
     connection.execute("""CREATE TABLE IF NOT EXISTS users (
         id INTEGER PRIMARY KEY, username TEXT NOT NULL UNIQUE,
         password_hash TEXT NOT NULL,
+        name TEXT NOT NULL DEFAULT '',
+        surname TEXT NOT NULL DEFAULT '',
+        email TEXT NOT NULL UNIQUE DEFAULT '',
+        phone_number TEXT NOT NULL DEFAULT '',
         role TEXT NOT NULL CHECK(role IN ('customer', 'staff', 'admin')),
-        active INTEGER NOT NULL DEFAULT 1)""")
+        active INTEGER NOT NULL DEFAULT 1,
+        email_verified INTEGER NOT NULL DEFAULT 0,
+        created_at REAL NOT NULL DEFAULT 0)""")
+
+    columns = [row['name'] for row in connection.execute("PRAGMA table_info(users)").fetchall()]
+    if columns:
+        if 'name' not in columns:
+            connection.execute("ALTER TABLE users ADD COLUMN name TEXT NOT NULL DEFAULT ''")
+        if 'surname' not in columns:
+            connection.execute("ALTER TABLE users ADD COLUMN surname TEXT NOT NULL DEFAULT ''")
+        if 'email' not in columns:
+            connection.execute("ALTER TABLE users ADD COLUMN email TEXT NOT NULL DEFAULT ''")
+        if 'phone_number' not in columns:
+            connection.execute("ALTER TABLE users ADD COLUMN phone_number TEXT NOT NULL DEFAULT ''")
+        if 'email_verified' not in columns:
+            connection.execute("ALTER TABLE users ADD COLUMN email_verified INTEGER NOT NULL DEFAULT 0")
+        if 'created_at' not in columns:
+            connection.execute("ALTER TABLE users ADD COLUMN created_at REAL NOT NULL DEFAULT 0")
+
+    connection.execute("""CREATE TABLE IF NOT EXISTS email_verifications (
+        id INTEGER PRIMARY KEY, user_id INTEGER NOT NULL REFERENCES users(id),
+        code TEXT NOT NULL, expires_at REAL NOT NULL, used_at REAL)""")
     connection.execute("""CREATE TABLE IF NOT EXISTS sessions (
         token_hash TEXT PRIMARY KEY, user_id INTEGER NOT NULL REFERENCES users(id),
         expires_at REAL NOT NULL)""")
@@ -65,12 +117,27 @@ def initialise_accounts(connection):
     # Bootstrap only once. Subsequent restarts must not create additional admins.
     if connection.execute("SELECT 1 FROM users WHERE role = 'admin'").fetchone():
         return
-    connection.execute('INSERT INTO users (username, password_hash, role) VALUES (?, ?, ?)',
-                       (username, password_hash(password), 'admin'))
+    now = time.time()
+    connection.execute(
+        """INSERT INTO users (username, password_hash, name, surname, email, phone_number, role, active, email_verified, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, 1, 1, ?)""",
+        (username, password_hash(password), 'Admin', 'Owner', f"{username}@example.com", '+1234567890', 'admin', now))
 
 
 def public_user(row):
-    return {key: row[key] for key in ('id', 'username', 'role', 'active')}
+    keys = row.keys() if hasattr(row, 'keys') else []
+    return {
+        'id': row['id'],
+        'username': row['username'],
+        'name': row['name'] if 'name' in keys else '',
+        'surname': row['surname'] if 'surname' in keys else '',
+        'email': row['email'] if 'email' in keys else '',
+        'phone_number': row['phone_number'] if 'phone_number' in keys else '',
+        'role': row['role'],
+        'active': bool(row['active']),
+        'email_verified': bool(row['email_verified']) if 'email_verified' in keys else False,
+        'created_at': row['created_at'] if 'created_at' in keys else 0,
+    }
 
 
 def session_user(request, required=True):
@@ -109,31 +176,47 @@ def require_admin(request: Request):
     return user
 
 
-class Credentials(BaseModel):
+class CustomerRegistration(BaseModel):
     model_config = ConfigDict(extra='forbid')
     username: str = Field(min_length=3, max_length=40)
-    password: str = Field(min_length=12, max_length=128)
+    password: str = Field(min_length=8, max_length=128)
+    name: str = Field(min_length=1, max_length=100)
+    surname: str = Field(min_length=1, max_length=100)
+    email: str = Field(min_length=3, max_length=128)
+    phone_number: str = Field(min_length=7, max_length=20)
+
+
+class StaffCredentials(CustomerRegistration):
+    pass
 
 
 class LoginRequest(BaseModel):
     model_config = ConfigDict(extra='forbid')
-    username: str = Field(min_length=1, max_length=40)
+    username: str = Field(min_length=1, max_length=128)
     password: str = Field(min_length=1, max_length=128)
 
 
-class InvitationRegistration(Credentials):
+class VerifyEmailRequest(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+    username_or_email: str = Field(min_length=1, max_length=128)
+    code: str = Field(min_length=1, max_length=128)
+
+
+class InvitationRegistration(CustomerRegistration):
     token: str = Field(min_length=20, max_length=128)
+    admin_passcode: str = Field(min_length=1, max_length=128)
 
 
 class PasswordChange(BaseModel):
     model_config = ConfigDict(extra='forbid')
     current_password: str = Field(min_length=1, max_length=128)
-    new_password: str = Field(min_length=12, max_length=128)
+    new_password: str = Field(min_length=8, max_length=128)
 
 
 class AccountState(BaseModel):
     model_config = ConfigDict(extra='forbid')
-    active: bool = Field(strict=True)
+    active: bool | None = Field(default=None, strict=True)
+    email_verified: bool | None = Field(default=None, strict=True)
 
 
 class StockUpdate(BaseModel):
@@ -185,63 +268,120 @@ def account_router():
                 raise HTTPException(404, 'Invitation not found.')
         return {'revoked': True}
 
+    def create_verification_code(connection, user_id):
+        code = f"{secrets.randbelow(1000000):06d}"
+        expires = time.time() + 86400
+        connection.execute('INSERT INTO email_verifications (user_id, code, expires_at) VALUES (?, ?, ?)',
+                           (user_id, code, expires))
+        return code
+
+    def create_user(connection, credentials, role):
+        username = normalise_username(credentials.username)
+        email = normalise_email(credentials.email)
+        phone = normalise_phone(credentials.phone_number)
+        validate_password(credentials.password)
+        now = time.time()
+        try:
+            with connection:
+                cursor = connection.execute(
+                    """INSERT INTO users (username, password_hash, name, surname, email, phone_number, role, active, email_verified, created_at)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, 1, 0, ?)""",
+                    (username, password_hash(credentials.password), credentials.name.strip(), credentials.surname.strip(),
+                     email, phone, role, now)
+                )
+                user_id = cursor.lastrowid
+                code = create_verification_code(connection, user_id)
+                user_row = connection.execute('SELECT * FROM users WHERE id = ?', (user_id,)).fetchone()
+                res = public_user(user_row)
+                res['verification_code'] = code
+                return res
+        except sqlite3.IntegrityError as error:
+            raise HTTPException(409, 'That username or email is unavailable.') from error
+
     @router.post('/auth/accept-invitation', status_code=201)
     def accept_invitation(body: InvitationRegistration, request: Request):
         username = normalise_username(body.username)
+        email = normalise_email(body.email)
+        phone = normalise_phone(body.phone_number)
+        validate_password(body.password)
+
+        expected_passcode = os.environ.get('TAKEAWAY_ADMIN_PASSCODE', 'AdminPass123!')
+        if not secrets.compare_digest(body.admin_passcode, expected_passcode):
+            raise HTTPException(401, 'Invalid admin passcode.')
+
         digest = hashlib.sha256(body.token.encode()).hexdigest()
+        now = time.time()
         with closing(connect(request.app.state.database_path)) as connection:
             address = request.client.host if request.client else 'unknown'
             throttle(connection, [('accept-invite:' + address, 30)])
-            # The account and invitation consumption commit together, even for concurrent requests.
             with connection:
                 connection.execute('BEGIN IMMEDIATE')
                 invitation = connection.execute("""SELECT i.id FROM admin_invitations i
                     JOIN users u ON u.id = i.created_by
                     WHERE i.token_hash = ? AND i.expires_at > ? AND i.used_at IS NULL
-                    AND i.revoked = 0 AND u.active = 1 AND u.role = 'admin'""", (digest, time.time())).fetchone()
+                    AND i.revoked = 0 AND u.active = 1 AND u.role = 'admin'""", (digest, now)).fetchone()
                 if not invitation:
                     raise HTTPException(400, 'This invitation is invalid, expired, revoked or already used. Ask an administrator for a new link.')
                 try:
-                    cursor = connection.execute('INSERT INTO users (username, password_hash, role) VALUES (?, ?, ?)',
-                                                (username, password_hash(body.password), 'admin'))
+                    cursor = connection.execute(
+                        """INSERT INTO users (username, password_hash, name, surname, email, phone_number, role, active, email_verified, created_at)
+                           VALUES (?, ?, ?, ?, ?, ?, 'admin', 1, 0, ?)""",
+                        (username, password_hash(body.password), body.name.strip(), body.surname.strip(), email, phone, now))
                 except sqlite3.IntegrityError as error:
-                    raise HTTPException(409, 'That username is unavailable. Choose another username; your invitation is still valid.') from error
-                connection.execute('UPDATE admin_invitations SET used_at = ? WHERE id = ?', (time.time(), invitation['id']))
-                return {'id': cursor.lastrowid, 'username': username, 'role': 'admin', 'active': 1}
-
-    def create_user(connection, credentials, role):
-        username = normalise_username(credentials.username)
-        try:
-            with connection:
-                cursor = connection.execute('INSERT INTO users (username, password_hash, role) VALUES (?, ?, ?)',
-                                            (username, password_hash(credentials.password), role))
-                return {'id': cursor.lastrowid, 'username': username, 'role': role, 'active': 1}
-        except sqlite3.IntegrityError as error:
-            raise HTTPException(409, 'That username is unavailable.') from error
+                    raise HTTPException(409, 'That username or email is unavailable. Choose another username; your invitation is still valid.') from error
+                user_id = cursor.lastrowid
+                code = create_verification_code(connection, user_id)
+                connection.execute('UPDATE admin_invitations SET used_at = ? WHERE id = ?', (now, invitation['id']))
+                user_row = connection.execute('SELECT * FROM users WHERE id = ?', (user_id,)).fetchone()
+                res = public_user(user_row)
+                res['verification_code'] = code
+                return res
 
     @router.post('/auth/register', status_code=201)
-    def register(credentials: Credentials, request: Request):
+    def register(credentials: CustomerRegistration, request: Request):
         with closing(connect(request.app.state.database_path)) as connection:
             address = request.client.host if request.client else 'unknown'
             throttle(connection, [('register:' + address, 30)])
             return create_user(connection, credentials, 'customer')
 
+    @router.post('/auth/verify-email')
+    def verify_email(body: VerifyEmailRequest, request: Request):
+        identifier = body.username_or_email.strip().lower()
+        with closing(connect(request.app.state.database_path)) as connection:
+            user = connection.execute('SELECT * FROM users WHERE username = ? OR email = ?', (identifier, identifier)).fetchone()
+            if not user:
+                raise HTTPException(404, 'Account not found.')
+            if user['email_verified']:
+                return {'verified': True, 'message': 'Email is already verified.'}
+            verification = connection.execute(
+                """SELECT id FROM email_verifications
+                   WHERE user_id = ? AND code = ? AND expires_at > ? AND used_at IS NULL
+                   ORDER BY id DESC""",
+                (user['id'], body.code.strip(), time.time())).fetchone()
+            if not verification:
+                raise HTTPException(400, 'Invalid or expired verification code.')
+            with connection:
+                connection.execute('UPDATE email_verifications SET used_at = ? WHERE id = ?', (time.time(), verification['id']))
+                connection.execute('UPDATE users SET email_verified = 1 WHERE id = ?', (user['id'],))
+            return {'verified': True, 'message': 'Email verified successfully. You may now sign in.'}
+
     @router.post('/auth/login')
     def login(credentials: LoginRequest, request: Request):
-        username = normalise_username(credentials.username)
+        identifier = credentials.username.strip().lower()
         with closing(connect(request.app.state.database_path)) as connection:
             address = request.client.host if request.client else 'unknown'
-            throttle(connection, [('user:' + username, 10), ('login:' + address, 100)])
-            user = connection.execute('SELECT * FROM users WHERE username = ?', (username,)).fetchone()
-            # Match the password work for unknown usernames to reduce timing disclosure.
+            throttle(connection, [('user:' + identifier, 10), ('login:' + address, 100)])
+            user = connection.execute('SELECT * FROM users WHERE username = ? OR email = ?', (identifier, identifier)).fetchone()
             valid = password_matches(credentials.password, user['password_hash'] if user else '0' * 32 + ':' + '0' * 64)
             if not valid or not user or not user['active']:
                 raise HTTPException(401, 'Incorrect username or password.')
+            if not user['email_verified']:
+                raise HTTPException(401, 'Email not verified. Please verify your email before signing in.')
             token = secrets.token_urlsafe(32)
             expires = time.time() + SESSION_SECONDS
             with connection:
                 connection.execute('DELETE FROM sessions WHERE expires_at <= ?', (time.time(),))
-                connection.execute('DELETE FROM login_attempts WHERE bucket = ?', ('user:' + username,))
+                connection.execute('DELETE FROM login_attempts WHERE bucket = ?', ('user:' + identifier,))
                 connection.execute('INSERT INTO sessions VALUES (?, ?, ?)',
                                    (hashlib.sha256(token.encode()).hexdigest(), user['id'], expires))
             return {'token': token, 'expires_at': expires, 'user': public_user(user)}
@@ -260,6 +400,7 @@ def account_router():
 
     @router.post('/auth/password')
     def change_password(body: PasswordChange, request: Request, user=Depends(require_account)):
+        validate_password(body.new_password)
         with closing(connect(request.app.state.database_path)) as connection:
             throttle(connection, [('password:' + str(user['id']), 10)])
             with connection:
@@ -277,22 +418,27 @@ def account_router():
             return [public_user(row) for row in connection.execute('SELECT * FROM users ORDER BY id')]
 
     @router.post('/admin/staff', status_code=201, dependencies=[Depends(require_admin)])
-    def create_staff(credentials: Credentials, request: Request):
+    def create_staff(credentials: StaffCredentials, request: Request):
         with closing(connect(request.app.state.database_path)) as connection:
             return create_user(connection, credentials, 'staff')
 
     @router.patch('/admin/users/{user_id}', dependencies=[Depends(require_admin)])
-    def set_active(user_id: int, body: AccountState, request: Request):
+    def update_user_state(user_id: int, body: AccountState, request: Request):
         with closing(connect(request.app.state.database_path)) as connection, connection:
             connection.execute('BEGIN IMMEDIATE')
             user = connection.execute('SELECT * FROM users WHERE id = ?', (user_id,)).fetchone()
             if not user:
                 raise HTTPException(404, 'Account not found.')
-            if user['role'] == 'admin':
-                raise HTTPException(409, 'The administrator account cannot be disabled here.')
-            connection.execute('UPDATE users SET active = ? WHERE id = ?', (int(body.active), user_id))
-            connection.execute('DELETE FROM sessions WHERE user_id = ?', (user_id,))
-        return {'id': user_id, 'active': body.active}
+            if body.active is not None:
+                if user['role'] == 'admin' and not body.active:
+                    raise HTTPException(409, 'The administrator account cannot be disabled here.')
+                connection.execute('UPDATE users SET active = ? WHERE id = ?', (int(body.active), user_id))
+                if not body.active:
+                    connection.execute('DELETE FROM sessions WHERE user_id = ?', (user_id,))
+            if body.email_verified is not None:
+                connection.execute('UPDATE users SET email_verified = ? WHERE id = ?', (int(body.email_verified), user_id))
+            updated = connection.execute('SELECT * FROM users WHERE id = ?', (user_id,)).fetchone()
+        return public_user(updated)
 
     @router.patch('/admin/menu/{item_id}', dependencies=[Depends(require_admin)])
     def set_stock(item_id: int, body: StockUpdate, request: Request):
