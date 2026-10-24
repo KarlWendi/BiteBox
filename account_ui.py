@@ -19,10 +19,14 @@ def clear_account():
         st.session_state.pop(key, None)
 
 
-def valid_registration(username, password, confirm):
+def valid_registration(username, password, confirm, email=None):
     if not re.fullmatch(r'[a-z0-9][a-z0-9_.-]{2,39}', username.strip().lower()):
         st.error('Choose a username with 3–40 characters. Start with a letter or number; use only letters, numbers, dots, hyphens or underscores.')
         return False
+    if email is not None and email.strip():
+        if not re.fullmatch(r'^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$', email.strip().lower()):
+            st.error('Please enter a valid email address.')
+            return False
     if not 12 <= len(password) <= 128:
         st.error('Use a password between 12 and 128 characters.')
         return False
@@ -42,13 +46,13 @@ def show_account():
             user = web_client.request_api('GET', '/auth/me', headers=account_headers())
         except APIError as error:
             st.error(str(error))
-            # Do not downgrade to a guest checkout after a service failure.
             if st.button('Clear sign-in on this device'):
                 clear_account()
                 st.rerun()
             return
         session['user'] = user
-        st.write(f"Signed in as {user['username']} · {user['role'].title()}")
+        email_str = f" ({user.get('email')})" if user.get('email') else ""
+        st.write(f"Signed in as {user['username']}{email_str} · {user['role'].title()}")
         if st.button('Sign out'):
             try:
                 web_client.request_api('POST', '/auth/logout', headers=account_headers())
@@ -82,7 +86,7 @@ def show_account():
     else:
         st.caption('Sign in for saved order history. Staff and administrators can sign in here too, or you can order as a guest.')
         with st.form('account_login'):
-            username = st.text_input('Account username')
+            username = st.text_input('Account username', help='You can enter your username or registered email address.')
             password = st.text_input('Account password', type='password')
             if st.form_submit_button('Sign in'):
                 try:
@@ -94,6 +98,28 @@ def show_account():
                     st.session_state.pop('staff_auth', None)
                     st.session_state.pop('staff_expires', None)
                     st.rerun()
+
+        with st.expander('Verify your email address'):
+            with st.form('verify_email_form'):
+                token = st.text_input('Verification token')
+                if st.form_submit_button('Verify Email'):
+                    try:
+                        web_client.request_api('POST', '/auth/verify-email', json={'token': token})
+                    except APIError as error:
+                        st.error(str(error))
+                    else:
+                        st.success('Email address verified successfully! You can now sign in.')
+
+            with st.form('resend_verification_form'):
+                resend_email = st.text_input('Email address to resend token to')
+                if st.form_submit_button('Resend Verification Email'):
+                    try:
+                        web_client.request_api('POST', '/auth/resend-verification', json={'email': resend_email})
+                    except APIError as error:
+                        st.error(str(error))
+                    else:
+                        st.info('If that email is registered and unverified, a new verification token has been sent.')
+
         st.caption('New administrator? Ask an existing administrator for an invitation link. Public registration creates a customer account.')
         if st.button("Don't have an account? Create a customer account", type='tertiary'):
             st.session_state['account_page'] = 'register'
@@ -108,17 +134,26 @@ def show_registration():
     st.caption('Username: 3–40 letters, numbers, dots, hyphens or underscores. Password: 12–128 characters.')
     with st.form('register_customer'):
         username = st.text_input('Choose a username')
+        email = st.text_input('Your email address (optional)', help='Required for order notifications and email verification.')
         password = st.text_input('Choose a password', type='password', help='Use at least 12 characters.')
         confirm = st.text_input('Confirm password', type='password')
         if st.form_submit_button('Create account'):
-            if valid_registration(username, password, confirm):
+            if valid_registration(username, password, confirm, email):
                 try:
-                    web_client.request_api('POST', '/auth/register', json={'username': username, 'password': password})
+                    payload = {'username': username, 'password': password}
+                    if email and email.strip():
+                        payload['email'] = email.strip()
+                    web_client.request_api('POST', '/auth/register', json=payload)
                 except APIError as error:
                     st.error(str(error))
                 else:
                     st.session_state['account_page'] = True
-                    st.session_state['account_notice'] = 'Account created. You can now sign in.'
+                    notice = 'Account created.'
+                    if email and email.strip():
+                        notice += ' Please check your email for the verification token and verify your email address before signing in.'
+                    else:
+                        notice += ' You can now sign in.'
+                    st.session_state['account_notice'] = notice
                     st.rerun()
 
 
@@ -132,7 +167,7 @@ def show_admin():
             st.error(str(error))
             return
         st.subheader('Accounts')
-        st.dataframe([{'Username': user['username'], 'Role': user['role'],
+        st.dataframe([{'Username': user['username'], 'Email': user.get('email', ''), 'Role': user['role'],
                        'Access': 'Active' if user['active'] else 'Disabled'} for user in users], hide_index=True)
         with st.form('create_staff', clear_on_submit=True):
             username = st.text_input('New staff username')

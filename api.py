@@ -1,7 +1,9 @@
-# A FastAPI application that simulates a takeaway ordering system, providing endpoints to view the menu, 
+# A FastAPI application that simulates a takeaway ordering system, providing endpoints to view the menu,
 # view orders, and place new orders, with input validation and error handling for insufficient stock and item not found scenarios.
 
-from contextlib import asynccontextmanager
+import asyncio
+from contextlib import asynccontextmanager, closing
+from typing import Optional
 
 # Standard library imports
 from fastapi import Depends, FastAPI, HTTPException, Query
@@ -13,12 +15,12 @@ from staff_auth import require_staff
 from accounts import account_router, optional_account, require_account
 
 from database import (
-    DATABASE_PATH, InsufficientStockError, ItemNotFoundError,
+    DATABASE_PATH, InsufficientStockError, ItemNotFoundError, connect,
     checkout, get_menu, get_orders, initialise_database, place_order,
-    update_order_status,
+    update_order_status, _mark_elapsed_orders_ready,
 )
 
-# A Pydantic model to define and validate the JSON structure that clients must send when placing an order, ensuring that item_id is a 
+# A Pydantic model to define and validate the JSON structure that clients must send when placing an order, ensuring that item_id is a
 # positive integer and quantity is between 1 and 50
 
 class OrderRequest(BaseModel):
@@ -26,6 +28,7 @@ class OrderRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     item_id: int = Field(strict=True, gt=0)
     quantity: int = Field(strict=True, ge=1, le=50)
+    email: Optional[str] = Field(default=None, max_length=120)
 
 
 class StatusUpdateRequest(BaseModel):
@@ -45,13 +48,14 @@ class CheckoutRequest(BaseModel):
     """A complete trolley submitted as one order."""
     model_config = ConfigDict(extra="forbid")
     items: list[TrolleyItemRequest] = Field(min_length=1, max_length=20)
+    email: Optional[str] = Field(default=None, max_length=120)
 
 
 class TrackingRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     tracking_code: str = Field(strict=True, min_length=1, max_length=128)
 
-# A function to create and configure the FastAPI application, including defining the lifespan context manager to initialise the database, 
+# A function to create and configure the FastAPI application, including defining the lifespan context manager to initialise the database,
 # and setting up the endpoints for home, menu, orders, and placing an order with appropriate error handling
 
 def create_app(database_path=DATABASE_PATH):
@@ -59,7 +63,21 @@ def create_app(database_path=DATABASE_PATH):
     @asynccontextmanager
     async def lifespan(application):
         initialise_database(database_path)
-        yield
+
+        async def timer_checker():
+            while True:
+                try:
+                    with closing(connect(database_path)) as connection, connection:
+                        _mark_elapsed_orders_ready(connection)
+                except Exception:
+                    pass
+                await asyncio.sleep(2)
+
+        checker_task = asyncio.create_task(timer_checker())
+        try:
+            yield
+        finally:
+            checker_task.cancel()
 
     application = FastAPI(
         title="Takeaway Ordering Simulator",
@@ -119,7 +137,11 @@ def create_app(database_path=DATABASE_PATH):
     @application.post("/orders", status_code=201)
     def order_endpoint(order: OrderRequest, user=Depends(optional_account)):
         try:
-            return place_order(order.item_id, order.quantity, database_path, customer_id=user['id'] if user else None)
+            return place_order(
+                order.item_id, order.quantity, database_path,
+                customer_id=user['id'] if user else None,
+                email=order.email
+            )
         except ItemNotFoundError as error:
             raise HTTPException(status_code=404, detail=str(error)) from error
         except InsufficientStockError as error:
@@ -132,6 +154,7 @@ def create_app(database_path=DATABASE_PATH):
                 [item.model_dump() for item in request.items],
                 database_path,
                 customer_id=user['id'] if user else None,
+                email=request.email
             )
         except ItemNotFoundError as error:
             raise HTTPException(status_code=404, detail=str(error)) from error
@@ -151,6 +174,6 @@ def create_app(database_path=DATABASE_PATH):
 
     return application
 
-# Create the FastAPI application instance using the create_app function, 
+# Create the FastAPI application instance using the create_app function,
 # which can be used by an ASGI server to run the application.
 app = create_app()

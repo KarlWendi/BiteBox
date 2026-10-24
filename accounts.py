@@ -6,11 +6,13 @@ import secrets
 import sqlite3
 import time
 from contextlib import closing
+from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, ConfigDict, Field
 
 from database import connect
+from notifications import send_verification_email
 
 SESSION_SECONDS = 3600
 PASSWORD_ROUNDS = 600_000
@@ -35,12 +37,36 @@ def normalise_username(username):
     return username
 
 
+def normalise_email(email):
+    if not email:
+        return None
+    email = email.strip().lower()
+    if not re.fullmatch(r'^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$', email):
+        raise HTTPException(422, 'Please enter a valid email address.')
+    return email
+
+
 def initialise_accounts(connection):
     connection.execute("""CREATE TABLE IF NOT EXISTS users (
         id INTEGER PRIMARY KEY, username TEXT NOT NULL UNIQUE,
         password_hash TEXT NOT NULL,
         role TEXT NOT NULL CHECK(role IN ('customer', 'staff', 'admin')),
         active INTEGER NOT NULL DEFAULT 1)""")
+
+    user_columns = {row["name"] for row in connection.execute("PRAGMA table_info(users)").fetchall()}
+    if "email" not in user_columns:
+        connection.execute("ALTER TABLE users ADD COLUMN email TEXT")
+        connection.execute("CREATE UNIQUE INDEX IF NOT EXISTS users_email ON users(email) WHERE email IS NOT NULL")
+    if "email_verified" not in user_columns:
+        connection.execute("ALTER TABLE users ADD COLUMN email_verified INTEGER NOT NULL DEFAULT 0")
+
+    connection.execute("""CREATE TABLE IF NOT EXISTS email_verifications (
+        id INTEGER PRIMARY KEY,
+        token_hash TEXT NOT NULL UNIQUE,
+        user_id INTEGER NOT NULL REFERENCES users(id),
+        expires_at REAL NOT NULL,
+        used_at REAL)""")
+
     connection.execute("""CREATE TABLE IF NOT EXISTS sessions (
         token_hash TEXT PRIMARY KEY, user_id INTEGER NOT NULL REFERENCES users(id),
         expires_at REAL NOT NULL)""")
@@ -65,12 +91,17 @@ def initialise_accounts(connection):
     # Bootstrap only once. Subsequent restarts must not create additional admins.
     if connection.execute("SELECT 1 FROM users WHERE role = 'admin'").fetchone():
         return
-    connection.execute('INSERT INTO users (username, password_hash, role) VALUES (?, ?, ?)',
+    connection.execute('INSERT INTO users (username, password_hash, role, email_verified) VALUES (?, ?, ?, 1)',
                        (username, password_hash(password), 'admin'))
 
 
 def public_user(row):
-    return {key: row[key] for key in ('id', 'username', 'role', 'active')}
+    user_dict = {key: row[key] for key in ('id', 'username', 'role', 'active') if key in row.keys()}
+    if 'email' in row.keys():
+        user_dict['email'] = row['email']
+    if 'email_verified' in row.keys():
+        user_dict['email_verified'] = bool(row['email_verified'])
+    return user_dict
 
 
 def session_user(request, required=True):
@@ -113,12 +144,23 @@ class Credentials(BaseModel):
     model_config = ConfigDict(extra='forbid')
     username: str = Field(min_length=3, max_length=40)
     password: str = Field(min_length=12, max_length=128)
+    email: Optional[str] = Field(default=None, max_length=120)
 
 
 class LoginRequest(BaseModel):
     model_config = ConfigDict(extra='forbid')
-    username: str = Field(min_length=1, max_length=40)
+    username: str = Field(min_length=1, max_length=120)
     password: str = Field(min_length=1, max_length=128)
+
+
+class VerifyEmailRequest(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+    token: str = Field(min_length=20, max_length=128)
+
+
+class ResendVerificationRequest(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+    email: Optional[str] = Field(default=None, max_length=120)
 
 
 class InvitationRegistration(Credentials):
@@ -188,11 +230,11 @@ def account_router():
     @router.post('/auth/accept-invitation', status_code=201)
     def accept_invitation(body: InvitationRegistration, request: Request):
         username = normalise_username(body.username)
+        email = normalise_email(body.email)
         digest = hashlib.sha256(body.token.encode()).hexdigest()
         with closing(connect(request.app.state.database_path)) as connection:
             address = request.client.host if request.client else 'unknown'
             throttle(connection, [('accept-invite:' + address, 30)])
-            # The account and invitation consumption commit together, even for concurrent requests.
             with connection:
                 connection.execute('BEGIN IMMEDIATE')
                 invitation = connection.execute("""SELECT i.id FROM admin_invitations i
@@ -202,21 +244,40 @@ def account_router():
                 if not invitation:
                     raise HTTPException(400, 'This invitation is invalid, expired, revoked or already used. Ask an administrator for a new link.')
                 try:
-                    cursor = connection.execute('INSERT INTO users (username, password_hash, role) VALUES (?, ?, ?)',
-                                                (username, password_hash(body.password), 'admin'))
+                    cursor = connection.execute('INSERT INTO users (username, password_hash, role, email, email_verified) VALUES (?, ?, ?, ?, 1)',
+                                                (username, password_hash(body.password), 'admin', email))
                 except sqlite3.IntegrityError as error:
+                    error_msg = str(error).lower()
+                    if 'email' in error_msg:
+                        raise HTTPException(409, 'That email address is already registered.') from error
                     raise HTTPException(409, 'That username is unavailable. Choose another username; your invitation is still valid.') from error
                 connection.execute('UPDATE admin_invitations SET used_at = ? WHERE id = ?', (time.time(), invitation['id']))
-                return {'id': cursor.lastrowid, 'username': username, 'role': 'admin', 'active': 1}
+                return {'id': cursor.lastrowid, 'username': username, 'role': 'admin', 'active': 1, 'email': email, 'email_verified': True}
 
     def create_user(connection, credentials, role):
         username = normalise_username(credentials.username)
+        email = normalise_email(credentials.email)
+        email_verified = 0 if email else 1
         try:
             with connection:
-                cursor = connection.execute('INSERT INTO users (username, password_hash, role) VALUES (?, ?, ?)',
-                                            (username, password_hash(credentials.password), role))
-                return {'id': cursor.lastrowid, 'username': username, 'role': role, 'active': 1}
+                cursor = connection.execute('INSERT INTO users (username, password_hash, role, email, email_verified) VALUES (?, ?, ?, ?, ?)',
+                                            (username, password_hash(credentials.password), role, email, email_verified))
+                user_id = cursor.lastrowid
+                token = None
+                if email:
+                    token = secrets.token_urlsafe(32)
+                    expires = time.time() + 86400
+                    connection.execute('INSERT INTO email_verifications (token_hash, user_id, expires_at) VALUES (?, ?, ?)',
+                                       (hashlib.sha256(token.encode()).hexdigest(), user_id, expires))
+                    send_verification_email(email, username, token)
+                res = {'id': user_id, 'username': username, 'role': role, 'active': 1, 'email': email, 'email_verified': bool(email_verified)}
+                if token:
+                    res['verification_token'] = token
+                return res
         except sqlite3.IntegrityError as error:
+            error_msg = str(error).lower()
+            if 'email' in error_msg:
+                raise HTTPException(409, 'That email address is already registered.') from error
             raise HTTPException(409, 'That username is unavailable.') from error
 
     @router.post('/auth/register', status_code=201)
@@ -226,22 +287,75 @@ def account_router():
             throttle(connection, [('register:' + address, 30)])
             return create_user(connection, credentials, 'customer')
 
+    @router.post('/auth/verify-email')
+    def verify_email(body: VerifyEmailRequest, request: Request):
+        digest = hashlib.sha256(body.token.encode()).hexdigest()
+        with closing(connect(request.app.state.database_path)) as connection, connection:
+            row = connection.execute("""SELECT v.id, v.user_id FROM email_verifications v
+                WHERE v.token_hash = ? AND v.expires_at > ? AND v.used_at IS NULL""",
+                (digest, time.time())).fetchone()
+            if not row:
+                raise HTTPException(400, 'Invalid or expired email verification token.')
+            connection.execute('UPDATE users SET email_verified = 1 WHERE id = ?', (row['user_id'],))
+            connection.execute('UPDATE email_verifications SET used_at = ? WHERE id = ?', (time.time(), row['id']))
+        return {'verified': True}
+
+    @router.post('/auth/resend-verification')
+    def resend_verification(body: ResendVerificationRequest, request: Request):
+        email = normalise_email(body.email) if body.email else None
+        if not email:
+            raise HTTPException(422, 'Please provide an email address.')
+        with closing(connect(request.app.state.database_path)) as connection:
+            user = connection.execute('SELECT * FROM users WHERE email = ?', (email,)).fetchone()
+            if not user:
+                return {'sent': True}
+            if user['email_verified']:
+                return {'sent': True, 'already_verified': True}
+            token = secrets.token_urlsafe(32)
+            expires = time.time() + 86400
+            with connection:
+                connection.execute('INSERT INTO email_verifications (token_hash, user_id, expires_at) VALUES (?, ?, ?)',
+                                   (hashlib.sha256(token.encode()).hexdigest(), user['id'], expires))
+            send_verification_email(user['email'], user['username'], token)
+            return {'sent': True, 'token': token}
+
     @router.post('/auth/login')
     def login(credentials: LoginRequest, request: Request):
-        username = normalise_username(credentials.username)
+        identifier = credentials.username.strip()
+        is_email = '@' in identifier
+        if is_email:
+            try:
+                identifier = normalise_email(identifier)
+            except HTTPException:
+                identifier = identifier.lower()
+        else:
+            try:
+                identifier = normalise_username(identifier)
+            except HTTPException:
+                identifier = identifier.lower()
+
         with closing(connect(request.app.state.database_path)) as connection:
             address = request.client.host if request.client else 'unknown'
-            throttle(connection, [('user:' + username, 10), ('login:' + address, 100)])
-            user = connection.execute('SELECT * FROM users WHERE username = ?', (username,)).fetchone()
-            # Match the password work for unknown usernames to reduce timing disclosure.
+            throttle(connection, [('user:' + identifier, 10), ('login:' + address, 100)])
+            if is_email:
+                user = connection.execute('SELECT * FROM users WHERE email = ?', (identifier,)).fetchone()
+            else:
+                user = connection.execute('SELECT * FROM users WHERE username = ?', (identifier,)).fetchone()
+                if not user:
+                    user = connection.execute('SELECT * FROM users WHERE email = ?', (identifier,)).fetchone()
+
             valid = password_matches(credentials.password, user['password_hash'] if user else '0' * 32 + ':' + '0' * 64)
             if not valid or not user or not user['active']:
                 raise HTTPException(401, 'Incorrect username or password.')
+
+            if user['email'] and not user['email_verified']:
+                raise HTTPException(403, 'Email address not verified. Please check your email for the verification link.')
+
             token = secrets.token_urlsafe(32)
             expires = time.time() + SESSION_SECONDS
             with connection:
                 connection.execute('DELETE FROM sessions WHERE expires_at <= ?', (time.time(),))
-                connection.execute('DELETE FROM login_attempts WHERE bucket = ?', ('user:' + username,))
+                connection.execute('DELETE FROM login_attempts WHERE bucket = ?', ('user:' + identifier,))
                 connection.execute('INSERT INTO sessions VALUES (?, ?, ?)',
                                    (hashlib.sha256(token.encode()).hexdigest(), user['id'], expires))
             return {'token': token, 'expires_at': expires, 'user': public_user(user)}

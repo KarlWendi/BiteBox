@@ -1,4 +1,4 @@
-# A simple database module for a takeaway ordering system, providing functions to initialise the database, 
+# A simple database module for a takeaway ordering system, providing functions to initialise the database,
 # retrieve the menu, place orders, and retrieve all orders, with error handling for item not found and insufficient stock scenarios.
 import sqlite3
 import os
@@ -11,6 +11,7 @@ from menu import MENU
 from ordering import validate_order_input
 from order_status import validate_status_change
 from kitchen import PREP_MINUTES
+from notifications import send_order_ready_email
 
 
 # Keep the database beside this file, regardless of the terminal's folder.
@@ -31,7 +32,7 @@ def connect(database_path=DATABASE_PATH):
     connection.execute("PRAGMA foreign_keys = ON")
     return connection
 
-# A function to initialise the database, creating the products and orders tables if they do not exist, and populating the products 
+# A function to initialise the database, creating the products and orders tables if they do not exist, and populating the products
 # table with initial stock levels.
 def initialise_database(database_path=DATABASE_PATH):
     connection = connect(database_path)
@@ -87,6 +88,7 @@ def initialise_database(database_path=DATABASE_PATH):
                 "status_updated_at": "TEXT",
                 "tracking_hash": "TEXT",
                 "customer_id": "INTEGER REFERENCES users(id)",
+                "email": "TEXT",
             }.items():
                 if column_name not in current_order_columns:
                     connection.execute(
@@ -151,12 +153,13 @@ def get_menu(database_path=DATABASE_PATH):
 
 # A function to place an order, validating the input, checking stock availability, updating the stock in the database,
 # and inserting a new order record, returning a dictionary with the order details or raising appropriate exceptions for errors.
-def place_order(item_id, quantity, database_path=DATABASE_PATH, *, customer_id=None):
+def place_order(item_id, quantity, database_path=DATABASE_PATH, *, customer_id=None, email=None):
     try:
         order = checkout(
             [{"item_id": item_id, "quantity": quantity}],
             database_path,
             customer_id=customer_id,
+            email=email,
         )
     except InsufficientStockError as error:
         # Keep the original single-item interface and tests compatible.
@@ -170,13 +173,18 @@ def place_order(item_id, quantity, database_path=DATABASE_PATH, *, customer_id=N
         "total_pence": order["total_pence"],
         "status": order["status"],
         "tracking_code": order["tracking_code"],
+        "email": order.get("email"),
     }
 
 
-def checkout(items, database_path=DATABASE_PATH, *, customer_id=None):
+def checkout(items, database_path=DATABASE_PATH, *, customer_id=None, email=None):
     """Validate and save a complete trolley as one atomic order."""
     if type(items) is not list or not items:
         raise ValueError("The trolley must contain at least one item.")
+
+    if email:
+        from accounts import normalise_email
+        email = normalise_email(email)
 
     combined = {}
     for entry in items:
@@ -193,6 +201,11 @@ def checkout(items, database_path=DATABASE_PATH, *, customer_id=None):
     try:
         with connection:
             connection.execute("BEGIN IMMEDIATE")
+            if not email and customer_id:
+                user = connection.execute("SELECT email FROM users WHERE id = ?", (customer_id,)).fetchone()
+                if user and user["email"]:
+                    email = user["email"]
+
             lines = []
             for item_id, quantity in combined.items():
                 product = connection.execute(
@@ -216,8 +229,8 @@ def checkout(items, database_path=DATABASE_PATH, *, customer_id=None):
             total = sum(line["total_pence"] for line in lines)
             tracking_code = secrets.token_urlsafe(32)
             result = connection.execute(
-                "INSERT INTO orders (total_pence, tracking_hash, customer_id) VALUES (?, ?, ?)",
-                (total, hashlib.sha256(tracking_code.encode()).hexdigest(), customer_id),
+                "INSERT INTO orders (total_pence, tracking_hash, customer_id, email) VALUES (?, ?, ?, ?)",
+                (total, hashlib.sha256(tracking_code.encode()).hexdigest(), customer_id, email),
             )
             order_id = result.lastrowid
             for line in lines:
@@ -239,6 +252,7 @@ def checkout(items, database_path=DATABASE_PATH, *, customer_id=None):
                 "status": "queued",
                 "items": lines,
                 "tracking_code": tracking_code,
+                "email": email,
             }
         return order
     finally:
@@ -285,7 +299,7 @@ def get_orders(database_path=DATABASE_PATH, *, tracking_code=None, customer_id=N
     finally:
         connection.close()
 
-# A function that updates the order status. 
+# A function that updates the order status.
 def update_order_status(order_id, new_status, database_path=DATABASE_PATH):
     connection = connect(database_path)
 
@@ -340,6 +354,9 @@ def update_order_status(order_id, new_status, database_path=DATABASE_PATH):
                     WHERE id = ?
                 """, (new_status, order_id))
 
+            if new_status == "ready" and order["status"] != "ready":
+                _send_order_ready_notification_if_needed(connection, order_id)
+
         return {"order_id": order_id, "status": new_status}
 
     finally:
@@ -351,8 +368,46 @@ def _database_timestamp(value):
     return value.astimezone(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
 
 
+def _get_order_items_summary(connection, order_id):
+    rows = connection.execute("""
+        SELECT COALESCE(order_items.product_name, products.name) AS name, quantity
+        FROM order_items
+        LEFT JOIN products ON products.id = order_items.item_id
+        WHERE order_items.order_id = ?
+    """, (order_id,)).fetchall()
+    return ", ".join(f"{r['quantity']} x {r['name']}" for r in rows) if rows else "Order items"
+
+
+def _get_order_email(connection, order_id):
+    order = connection.execute("SELECT email, customer_id FROM orders WHERE id = ?", (order_id,)).fetchone()
+    if not order:
+        return None
+    if order["email"]:
+        return order["email"]
+    if order["customer_id"]:
+        user = connection.execute("SELECT email FROM users WHERE id = ?", (order["customer_id"],)).fetchone()
+        if user and user["email"]:
+            return user["email"]
+    return None
+
+
+def _send_order_ready_notification_if_needed(connection, order_id):
+    email = _get_order_email(connection, order_id)
+    if email:
+        summary = _get_order_items_summary(connection, order_id)
+        send_order_ready_email(email, order_id, summary)
+
+
 def _mark_elapsed_orders_ready(connection):
     """Make elapsed preparation timers ready during the next API poll."""
+    elapsed = connection.execute("""
+        SELECT id FROM orders
+        WHERE status = 'preparing'
+          AND estimated_ready_at IS NOT NULL
+          AND estimated_ready_at <= CURRENT_TIMESTAMP
+    """).fetchall()
+    if not elapsed:
+        return
     connection.execute("""
         UPDATE orders
         SET status = 'ready', status_updated_at = CURRENT_TIMESTAMP
@@ -360,4 +415,5 @@ def _mark_elapsed_orders_ready(connection):
           AND estimated_ready_at IS NOT NULL
           AND estimated_ready_at <= CURRENT_TIMESTAMP
     """)
-        
+    for row in elapsed:
+        _send_order_ready_notification_if_needed(connection, row["id"])

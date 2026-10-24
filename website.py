@@ -1,5 +1,6 @@
 """Public Streamlit storefront for the takeaway ordering simulator."""
 import os
+import re
 import streamlit as st
 from menu import format_price
 from tracking_ui import show_tracking, show_staff
@@ -154,14 +155,25 @@ with trolley_column:
                         trolley[product_id] += 1
                         st.rerun()
                 if st.button(f"Remove {item['name']}",key=f"remove-{product_id}",width="stretch"):del st.session_state["trolley"][product_id];st.rerun()
+
+        guest_email = None
+        if not st.session_state.get('account_session'):
+            guest_email = st.text_input("Email address for order updates (optional)", key="checkout_email", help="Required so we can email you when your order is ready.")
+
         if st.button("Checkout",type="primary",width="stretch"):
-            items=[{"item_id":product_id,"quantity":amount} for product_id,amount in trolley.items()]
-            try:order=request_api("POST","/checkout",json={"items":items},headers=account_headers())
-            except APIError as error:st.error(str(error))
+            if not st.session_state.get('account_session') and guest_email and guest_email.strip() and not re.fullmatch(r'^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$', guest_email.strip().lower()):
+                st.error("Please enter a valid email address to check out.")
             else:
-                if not st.session_state.get('account_session'):
-                    st.session_state.setdefault("tracking_codes", {})[order["tracking_code"]] = order["order_id"]
-                st.session_state["trolley"]={};st.session_state["order_notice"]=(f"Order #{order['order_id']} placed with {len(order['items'])} item type(s) — {format_price(order['total_pence'])}.");st.rerun()
+                items=[{"item_id":product_id,"quantity":amount} for product_id,amount in trolley.items()]
+                payload = {"items": items}
+                if guest_email and guest_email.strip():
+                    payload["email"] = guest_email.strip()
+                try:order=request_api("POST","/checkout",json=payload,headers=account_headers())
+                except APIError as error:st.error(str(error))
+                else:
+                    if not st.session_state.get('account_session'):
+                        st.session_state.setdefault("tracking_codes", {})[order["tracking_code"]] = order["order_id"]
+                    st.session_state["trolley"]={};st.session_state["order_notice"]=(f"Order #{order['order_id']} placed with {len(order['items'])} item type(s) — {format_price(order['total_pence'])}.");st.rerun()
     else:st.markdown('<div class="empty"><span>🛒</span>Your trolley is empty.<br>Add something delicious to get started.</div></div>',unsafe_allow_html=True)
 
 st.markdown('<div id="track-order"></div><div class="kicker">Order tracking</div><div class="section-title">From kitchen to collection</div><div class="section-copy">This view refreshes automatically while food is being prepared.</div>',unsafe_allow_html=True)
