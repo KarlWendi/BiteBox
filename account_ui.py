@@ -167,11 +167,11 @@ def show_registration():
         st.rerun()
     st.caption('Username: 3–40 letters/numbers/dots/hyphens. Password: 8–128 characters with upper, lower, digit and special char.')
     with st.form('register_customer'):
+        username = st.text_input('Choose a username')
+        email = st.text_input('Email address')
         name = st.text_input('First name')
         surname = st.text_input('Surname')
-        email = st.text_input('Email address')
         phone_number = st.text_input('Phone number')
-        username = st.text_input('Choose a username')
         password = st.text_input('Choose a password', type='password', help='At least 8 characters with upper, lower, number, special char.')
         confirm = st.text_input('Confirm password', type='password')
         if st.form_submit_button('Create account'):
