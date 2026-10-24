@@ -275,6 +275,9 @@ def account_router():
                            (user_id, code, expires))
         return code
 
+    def send_verification_email(email, code):
+        print(f"[EMAIL SIMULATION] Sent verification code {code} to {email}")
+
     def create_user(connection, credentials, role):
         username = normalise_username(credentials.username)
         email = normalise_email(credentials.email)
@@ -291,10 +294,9 @@ def account_router():
                 )
                 user_id = cursor.lastrowid
                 code = create_verification_code(connection, user_id)
+                send_verification_email(email, code)
                 user_row = connection.execute('SELECT * FROM users WHERE id = ?', (user_id,)).fetchone()
-                res = public_user(user_row)
-                res['verification_code'] = code
-                return res
+                return public_user(user_row)
         except sqlite3.IntegrityError as error:
             raise HTTPException(409, 'That username or email is unavailable.') from error
 
@@ -331,11 +333,10 @@ def account_router():
                     raise HTTPException(409, 'That username or email is unavailable. Choose another username; your invitation is still valid.') from error
                 user_id = cursor.lastrowid
                 code = create_verification_code(connection, user_id)
+                send_verification_email(email, code)
                 connection.execute('UPDATE admin_invitations SET used_at = ? WHERE id = ?', (now, invitation['id']))
                 user_row = connection.execute('SELECT * FROM users WHERE id = ?', (user_id,)).fetchone()
-                res = public_user(user_row)
-                res['verification_code'] = code
-                return res
+                return public_user(user_row)
 
     @router.post('/auth/register', status_code=201)
     def register(credentials: CustomerRegistration, request: Request):

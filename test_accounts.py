@@ -35,7 +35,9 @@ class AccountTests(unittest.TestCase):
         self.assertEqual(response.status_code, 201, response.text)
         data = response.json()
         self.assertEqual(data['role'], 'admin')
-        self.client.post('/auth/verify-email', json={'username_or_email': 'newadmin', 'code': data['verification_code']})
+        with closing(connect(self.path)) as connection:
+            code = connection.execute('SELECT code FROM email_verifications WHERE user_id = ?', (data['id'],)).fetchone()[0]
+        self.client.post('/auth/verify-email', json={'username_or_email': 'newadmin', 'code': code})
         self.assertEqual(self.client.get('/admin/users', headers=self.login('newadmin')).status_code, 200)
         body['username'] = 'anotheradmin'
         self.assertEqual(self.client.post('/auth/accept-invitation', json=body).status_code, 400)
@@ -99,9 +101,11 @@ class AccountTests(unittest.TestCase):
         })
         self.assertEqual(response.status_code, 201, response.text)
         data = response.json()
-        if verify and 'verification_code' in data:
+        if verify:
+            with closing(connect(self.path)) as connection:
+                code = connection.execute('SELECT code FROM email_verifications WHERE user_id = ?', (data['id'],)).fetchone()[0]
             self.client.post('/auth/verify-email', json={
-                'username_or_email': username, 'code': data['verification_code']
+                'username_or_email': username, 'code': code
             })
         return data
 
@@ -173,7 +177,9 @@ class AccountTests(unittest.TestCase):
         self.assertEqual(response.status_code, 201)
         data = response.json()
         self.assertEqual(data['role'], 'staff')
-        self.client.post('/auth/verify-email', json={'username_or_email': 'helper', 'code': data['verification_code']})
+        with closing(connect(self.path)) as connection:
+            code = connection.execute('SELECT code FROM email_verifications WHERE user_id = ?', (data['id'],)).fetchone()[0]
+        self.client.post('/auth/verify-email', json={'username_or_email': 'helper', 'code': code})
         staff = self.login('helper')
         self.client.post('/orders', json={'item_id': 1, 'quantity': 1})
         self.assertEqual(self.client.get('/orders', headers=staff).status_code, 200)

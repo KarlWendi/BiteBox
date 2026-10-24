@@ -37,7 +37,8 @@ class AccountWebsiteTests(unittest.TestCase):
         self.fill('Admin password', PASSWORD)
         self.fill('Confirm admin password', PASSWORD)
         self.click('Create administrator account')
-        code = self.app.session_state['pending_verification_code']
+        with closing(connect(self.client.app.state.database_path)) as connection:
+            code = connection.execute('SELECT code FROM email_verifications ORDER BY id DESC LIMIT 1').fetchone()[0]
         self.fill('Verification code', code)
         self.click('Verify Email')
         self.assertTrue(any('verified' in notice.value.lower() for notice in self.app.success))
@@ -61,7 +62,8 @@ class AccountWebsiteTests(unittest.TestCase):
         self.fill('Admin password', PASSWORD)
         self.fill('Confirm admin password', PASSWORD)
         self.click('Create administrator account')
-        code = self.app.session_state['pending_verification_code']
+        with closing(connect(self.client.app.state.database_path)) as connection:
+            code = connection.execute('SELECT code FROM email_verifications ORDER BY id DESC LIMIT 1').fetchone()[0]
         self.fill('Verification code', code)
         self.click('Verify Email')
         self.login('secondadmin')
@@ -84,7 +86,8 @@ class AccountWebsiteTests(unittest.TestCase):
         self.assertIn('email', self.app.error[0].value.lower())
         self.fill('Email address', 'valid@example.com')
         self.click('Create account')
-        code = self.app.session_state['pending_verification_code']
+        with closing(connect(self.client.app.state.database_path)) as connection:
+            code = connection.execute('SELECT code FROM email_verifications ORDER BY id DESC LIMIT 1').fetchone()[0]
         self.fill('Verification code', code)
         self.click('Verify Email')
         self.login('validuser')
@@ -110,7 +113,8 @@ class AccountWebsiteTests(unittest.TestCase):
         self.fill('Admin username', 'correctedadmin')
         self.fill('Email address', 'correctedadmin@example.com')
         self.click('Create administrator account')
-        code = self.app.session_state['pending_verification_code']
+        with closing(connect(self.client.app.state.database_path)) as connection:
+            code = connection.execute('SELECT code FROM email_verifications ORDER BY id DESC LIMIT 1').fetchone()[0]
         self.fill('Verification code', code)
         self.click('Verify Email')
         self.login('correctedadmin')
@@ -165,18 +169,18 @@ class AccountWebsiteTests(unittest.TestCase):
 
     def register(self, username):
         self.open_registration()
+        self.fill('Choose a username', username)
+        self.fill('Email address', f'{username}@example.com')
         self.fill('First name', 'Test')
         self.fill('Surname', 'User')
-        self.fill('Email address', f'{username}@example.com')
         self.fill('Phone number', '+1234567890')
-        self.fill('Choose a username', username)
         self.fill('Choose a password', PASSWORD)
         self.fill('Confirm password', PASSWORD)
         self.click('Create account')
-        if 'pending_verification_code' in self.app.session_state:
-            code = self.app.session_state['pending_verification_code']
-            self.fill('Verification code', code)
-            self.click('Verify Email')
+        with closing(connect(self.client.app.state.database_path)) as connection:
+            code = connection.execute('SELECT code FROM email_verifications ORDER BY id DESC LIMIT 1').fetchone()[0]
+        self.fill('Verification code', code)
+        self.click('Verify Email')
 
     def test_customer_registration_checkout_history_and_logout(self):
         self.register('alice')
