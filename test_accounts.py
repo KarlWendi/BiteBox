@@ -226,6 +226,14 @@ class AccountTests(unittest.TestCase):
             self.assertEqual(self.client.post('/auth/login', json={'username': 'unknown', 'password': 'wrong'}).status_code, 401)
         self.assertEqual(self.client.post('/auth/login', json={'username': 'unknown', 'password': 'wrong'}).status_code, 429)
 
+    def test_admin_can_verify_user_email_via_patch(self):
+        user = self.register('unverified', verify=False)
+        self.assertEqual(self.client.post('/auth/login', json={'username': 'unverified', 'password': PASSWORD}).status_code, 401)
+        res = self.client.patch(f"/admin/users/{user['id']}", headers=self.admin, json={'email_verified': True})
+        self.assertEqual(res.status_code, 200)
+        self.assertTrue(res.json()['email_verified'])
+        self.login('unverified')
+
     def test_bootstrap_does_not_overwrite_password_or_promote_customer(self):
         self.register('alice')
         with patch.dict(os.environ, {'TAKEAWAY_ADMIN_USERNAME': 'alice'}):

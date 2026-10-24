@@ -236,6 +236,15 @@ def show_admin():
                         st.rerun()
 
         for user in users:
+            if not user.get('email_verified'):
+                if st.button(f"Verify email for {user['username']}", key=f"verify-email-{user['id']}"):
+                    try:
+                        web_client.request_api('PATCH', f"/admin/users/{user['id']}", headers=account_headers(), json={'email_verified': True})
+                    except APIError as error:
+                        st.error(str(error))
+                    else:
+                        st.session_state['account_notice'] = f"Email verified for {user['username']}."
+                        st.rerun()
             if user['role'] == 'admin':
                 continue
             action = 'Disable' if user['active'] else 'Enable'

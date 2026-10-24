@@ -215,7 +215,8 @@ class PasswordChange(BaseModel):
 
 class AccountState(BaseModel):
     model_config = ConfigDict(extra='forbid')
-    active: bool = Field(strict=True)
+    active: bool | None = Field(default=None, strict=True)
+    email_verified: bool | None = Field(default=None, strict=True)
 
 
 class StockUpdate(BaseModel):
@@ -422,17 +423,22 @@ def account_router():
             return create_user(connection, credentials, 'staff')
 
     @router.patch('/admin/users/{user_id}', dependencies=[Depends(require_admin)])
-    def set_active(user_id: int, body: AccountState, request: Request):
+    def update_user_state(user_id: int, body: AccountState, request: Request):
         with closing(connect(request.app.state.database_path)) as connection, connection:
             connection.execute('BEGIN IMMEDIATE')
             user = connection.execute('SELECT * FROM users WHERE id = ?', (user_id,)).fetchone()
             if not user:
                 raise HTTPException(404, 'Account not found.')
-            if user['role'] == 'admin':
-                raise HTTPException(409, 'The administrator account cannot be disabled here.')
-            connection.execute('UPDATE users SET active = ? WHERE id = ?', (int(body.active), user_id))
-            connection.execute('DELETE FROM sessions WHERE user_id = ?', (user_id,))
-        return {'id': user_id, 'active': body.active}
+            if body.active is not None:
+                if user['role'] == 'admin' and not body.active:
+                    raise HTTPException(409, 'The administrator account cannot be disabled here.')
+                connection.execute('UPDATE users SET active = ? WHERE id = ?', (int(body.active), user_id))
+                if not body.active:
+                    connection.execute('DELETE FROM sessions WHERE user_id = ?', (user_id,))
+            if body.email_verified is not None:
+                connection.execute('UPDATE users SET email_verified = ? WHERE id = ?', (int(body.email_verified), user_id))
+            updated = connection.execute('SELECT * FROM users WHERE id = ?', (user_id,)).fetchone()
+        return public_user(updated)
 
     @router.patch('/admin/menu/{item_id}', dependencies=[Depends(require_admin)])
     def set_stock(item_id: int, body: StockUpdate, request: Request):
