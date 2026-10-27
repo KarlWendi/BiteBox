@@ -281,7 +281,25 @@ def account_router():
         return code
 
     def send_verification_email(email, code):
-        print(f"[EMAIL SIMULATION] Sent verification code {code} to {email}")
+        smtp_host = os.environ.get('SMTP_HOST')
+        smtp_port = int(os.environ.get('SMTP_PORT', 587))
+        smtp_user = os.environ.get('SMTP_USER')
+        smtp_pass = os.environ.get('SMTP_PASS')
+        if smtp_host and smtp_user and smtp_pass:
+            import smtplib
+            from email.mime.text import MIMEText
+            msg = MIMEText(f"Your BiteBox email verification code is: {code}")
+            msg['Subject'] = 'Your BiteBox Email Verification Code'
+            msg['From'] = smtp_user
+            msg['To'] = email
+            try:
+                with smtplib.SMTP(smtp_host, smtp_port) as server:
+                    server.starttls()
+                    server.login(smtp_user, smtp_pass)
+                    server.sendmail(smtp_user, [email], msg.as_string())
+            except Exception as err:
+                print(f"[SMTP ERROR] Failed to send email to {email}: {err}")
+        print(f"[EMAIL DISPATCH] Verification code {code} sent to {email}")
 
     def create_user(connection, credentials, role):
         username = normalise_username(credentials.username)
