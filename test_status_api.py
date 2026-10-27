@@ -56,6 +56,14 @@ class StatusApiTests(unittest.TestCase):
 
         self.assertEqual(response.status_code, 404)
 
+    def test_sqlite_operational_error_returns_503(self):
+        from unittest.mock import patch
+        import sqlite3
+        with patch("api.get_menu", side_effect=sqlite3.OperationalError("database is locked")):
+            response = self.client.get("/menu")
+            self.assertEqual(response.status_code, 503)
+            self.assertIn("busy or locked", response.json()["detail"])
+
     def test_unexpected_request_field_is_rejected(self):
         response = self.client.patch(
             f"/orders/{self.order_id}/status",

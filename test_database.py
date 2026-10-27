@@ -5,7 +5,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from database import get_menu, get_orders, initialise_database, place_order
+from database import connect, get_menu, get_orders, initialise_database, place_order
 
 
 class DatabaseTests(unittest.TestCase):
@@ -59,6 +59,14 @@ class DatabaseTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "Insufficient stock"):
             place_order(1, 1, self.path)
         self.assertEqual(len(get_orders(self.path)), 1)
+
+    def test_connect_sets_timeout_and_wal_mode(self):
+        conn = connect(self.path)
+        try:
+            journal_mode = conn.execute("PRAGMA journal_mode").fetchone()[0]
+            self.assertEqual(journal_mode.lower(), "wal")
+        finally:
+            conn.close()
 
     def test_failed_insert_rolls_back_stock_reservation(self):
         # Force a save failure after the stock update to verify atomicity.

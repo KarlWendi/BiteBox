@@ -3,8 +3,11 @@
 
 from contextlib import asynccontextmanager
 
+import sqlite3
+
 # Standard library imports
-from fastapi import Depends, FastAPI, HTTPException, Query
+from fastapi import Depends, FastAPI, HTTPException, Query, Request
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field
 
 # Local imports
@@ -68,6 +71,14 @@ def create_app(database_path=DATABASE_PATH):
         lifespan=lifespan,
     )
     application.state.database_path = database_path
+
+    @application.exception_handler(sqlite3.OperationalError)
+    async def sqlite_operational_error_handler(request: Request, exc: sqlite3.OperationalError):
+        return JSONResponse(
+            status_code=503,
+            content={"detail": "The database is busy or locked. Please try your request again in a moment."}
+        )
+
     application.include_router(account_router())
 
 # Define the endpoints for the FastAPI application, including the home endpoint that returns a welcome message and documentation link,
