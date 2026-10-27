@@ -53,6 +53,60 @@ def valid_registration(username, password, confirm, name, surname, email, phone_
     return True
 
 
+def show_forgot_password():
+    st.subheader('Forgot password')
+
+    reset_token = st.session_state.get('reset_password_token')
+
+    if reset_token:
+        st.caption('Enter your new password below.')
+        with st.form('confirm_reset_form'):
+            new_password = st.text_input('New password', type='password', help='At least 8 characters with upper, lower, digit and special char.')
+            confirm_password = st.text_input('Confirm new password', type='password')
+            if st.form_submit_button('Reset Password'):
+                if new_password != confirm_password:
+                    st.error('The passwords do not match.')
+                else:
+                    try:
+                        res = web_client.request_api('POST', '/auth/confirm-password-reset', json={
+                            'token': reset_token,
+                            'new_password': new_password
+                        })
+                    except APIError as error:
+                        st.error(str(error))
+                    else:
+                        st.session_state.pop('reset_password_token', None)
+                        st.session_state['account_notice'] = res.get('message', 'Password reset successfully. You may now sign in.')
+                        st.session_state['account_page'] = True
+                        st.rerun()
+    else:
+        sent_notice = st.session_state.get('reset_email_sent_notice')
+        if sent_notice:
+            st.info(sent_notice)
+        st.caption('Enter your registered email address or username to receive a password reset link.')
+        with st.form('request_reset_form'):
+            email = st.text_input('Email address or username')
+            if st.form_submit_button('Send reset link'):
+                if not email.strip():
+                    st.error('Please enter your email address or username.')
+                else:
+                    try:
+                        res = web_client.request_api('POST', '/auth/request-password-reset', json={
+                            'username_or_email': email
+                        })
+                    except APIError as error:
+                        st.error(str(error))
+                    else:
+                        st.session_state['reset_email_sent_notice'] = res.get('message', 'If an account exists, a reset link has been sent.')
+                        st.rerun()
+
+    if st.button('Back to sign in', type='tertiary'):
+        st.session_state.pop('reset_password_token', None)
+        st.session_state.pop('reset_email_sent_notice', None)
+        st.session_state['account_page'] = True
+        st.rerun()
+
+
 def show_email_verification():
     st.subheader('Verify your email address')
 
@@ -192,9 +246,15 @@ def show_account():
                     st.session_state.pop('staff_auth', None)
                     st.session_state.pop('staff_expires', None)
                     st.rerun()
-        if st.button('Need to verify your email?', type='tertiary'):
-            st.session_state['account_page'] = 'verify'
-            st.rerun()
+        col1, col2 = st.columns(2)
+        with col1:
+            if st.button('Forgot password?', type='tertiary'):
+                st.session_state['account_page'] = 'forgot_password'
+                st.rerun()
+        with col2:
+            if st.button('Need to verify your email?', type='tertiary'):
+                st.session_state['account_page'] = 'verify'
+                st.rerun()
         st.caption('New administrator? Ask an existing administrator for an invitation link. Public registration creates a customer account.')
         if st.button("Don't have an account? Create a customer account", type='tertiary'):
             st.session_state['account_page'] = 'register'

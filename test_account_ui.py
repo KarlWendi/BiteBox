@@ -264,6 +264,29 @@ class AccountWebsiteTests(unittest.TestCase):
         self.click('Checkout')
         self.assertEqual(self.app.dataframe[0].value['Order'].tolist(), ['#1'])
 
+    def test_forgot_password_flow(self):
+        self.register('alice')
+        self.open_account()
+        self.click('Forgot password?')
+        self.fill('Email address or username', 'alice@example.com')
+        self.click('Send reset link')
+        import hashlib, secrets
+        with closing(connect(self.client.app.state.database_path)) as connection, connection:
+            token = secrets.token_urlsafe(32)
+            thash = hashlib.sha256(token.encode()).hexdigest()
+            user_id = connection.execute("SELECT id FROM users WHERE username = 'alice'").fetchone()[0]
+            connection.execute('INSERT INTO password_resets (token_hash, user_id, expires_at) VALUES (?, ?, ?)',
+                               (thash, user_id, 9999999999.0))
+        self.app.query_params['reset_token'] = token
+        self.app.run()
+        new_pwd = PASSWORD + 'Reset1!'
+        self.fill('New password', new_pwd)
+        self.fill('Confirm new password', new_pwd)
+        self.click('Reset Password')
+        self.assertTrue(any('reset successfully' in notice.value.lower() for notice in self.app.success))
+        self.login('alice', new_pwd)
+        self.assertTrue(any(button.label == 'Sign out' for button in self.app.button))
+
     def test_password_validation_and_change(self):
         self.open_registration()
         self.fill('First name', 'Alice')

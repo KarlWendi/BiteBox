@@ -229,6 +229,35 @@ class AccountTests(unittest.TestCase):
         self.assertEqual(self.client.post('/auth/login', json={'username': 'alice', 'password': PASSWORD}).status_code, 401)
         self.login('alice', new_pass)
 
+    def test_password_reset_flow(self):
+        self.register('alice')
+        req = self.client.post('/auth/request-password-reset', json={'username_or_email': 'alice@example.com'})
+        self.assertEqual(req.status_code, 200)
+        self.assertTrue(req.json()['sent'])
+
+        with closing(connect(self.path)) as connection:
+            token_hash = connection.execute('SELECT token_hash FROM password_resets ORDER BY id DESC LIMIT 1').fetchone()[0]
+
+        import hashlib, secrets
+        # Verify token confirmation
+        with closing(connect(self.path)) as connection, connection:
+            token = secrets.token_urlsafe(32)
+            thash = hashlib.sha256(token.encode()).hexdigest()
+            user_id = connection.execute("SELECT id FROM users WHERE username = 'alice'").fetchone()[0]
+            connection.execute('INSERT INTO password_resets (token_hash, user_id, expires_at) VALUES (?, ?, ?)',
+                               (thash, user_id, 9999999999.0))
+
+        new_pwd = PASSWORD + 'Reset1!'
+        confirm = self.client.post('/auth/confirm-password-reset', json={
+            'token': token,
+            'new_password': new_pwd
+        })
+        self.assertEqual(confirm.status_code, 200)
+        self.assertTrue(confirm.json()['reset'])
+
+        self.assertEqual(self.client.post('/auth/login', json={'username': 'alice', 'password': PASSWORD}).status_code, 401)
+        self.login('alice', new_pwd)
+
     def test_login_is_rate_limited(self):
         for _ in range(10):
             self.assertEqual(self.client.post('/auth/login', json={'username': 'unknown', 'password': 'wrong'}).status_code, 401)
