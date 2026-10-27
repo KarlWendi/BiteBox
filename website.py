@@ -30,6 +30,10 @@ h1,h2,h3{font-family:'Outfit',sans-serif!important;letter-spacing:-.025em}[data-
 .basket{padding:1.35rem;border-radius:24px;background:#fff;border:1px solid #e8e0d4;box-shadow:0 12px 35px #20272312}.basket-title{font:800 1.4rem 'Outfit';margin-bottom:.2rem}.basket-line{display:flex;justify-content:space-between;gap:1rem;padding:.7rem 0;border-bottom:1px solid #eee8df}.basket-line small{color:var(--muted)}.basket-total{display:flex;justify-content:space-between;margin-top:1rem;font:800 1.2rem 'Outfit'}.empty{text-align:center;padding:2.4rem 1rem;color:var(--muted)}.empty span{display:block;font-size:2.5rem;margin-bottom:.5rem}
 .footer{margin-top:3.5rem;padding:1.6rem 0;border-top:1px solid #ddd5c9;color:var(--muted);font-size:.84rem;text-align:center}
 .stButton>button,.stFormSubmitButton>button{border-radius:12px;font-weight:700;min-height:2.8rem;background:#fff;color:var(--ink);border:1px solid #d9d1c6}.stButton>button:hover,.stFormSubmitButton>button:hover{color:var(--orange);border-color:var(--orange)}.stButton>button[kind="primary"],.stFormSubmitButton>button[kind="primary"]{background:var(--orange);border-color:var(--orange);color:#fff}[data-testid="stForm"]{border:0;padding:0}[data-testid="stMetric"]{padding:1rem;background:#fff;border:1px solid #e8e0d4;border-radius:16px}[data-testid="stDataFrame"]{border-radius:15px;overflow:hidden}button[data-baseweb="tab"]{font-weight:700}
+@keyframes bitebox-spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+[data-testid="stSpinner"] svg { display: none !important; }
+[data-testid="stSpinner"] i, [data-testid="stSpinner"] div:first-child { display: inline-flex !important; align-items: center; justify-content: center; width: 32px; height: 32px; border-radius: 10px; background: var(--orange); color: #fff; font-family: 'Outfit', sans-serif; font-weight: 800; font-size: 1.1rem; animation: bitebox-spin 1s linear infinite; }
+[data-testid="stSpinner"] div:first-child::before { content: "B"; }
 </style>
 """, unsafe_allow_html=True)
 
