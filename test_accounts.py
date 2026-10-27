@@ -35,7 +35,9 @@ class AccountTests(unittest.TestCase):
         self.assertEqual(response.status_code, 201, response.text)
         data = response.json()
         self.assertEqual(data['role'], 'admin')
-        self.client.post('/auth/verify-email', json={'username_or_email': 'newadmin', 'code': data['verification_code']})
+        with closing(connect(self.path)) as connection:
+            code = connection.execute('SELECT code FROM email_verifications WHERE user_id = ?', (data['id'],)).fetchone()[0]
+        self.client.post('/auth/verify-email', json={'username_or_email': 'newadmin', 'code': code})
         self.assertEqual(self.client.get('/admin/users', headers=self.login('newadmin')).status_code, 200)
         body['username'] = 'anotheradmin'
         self.assertEqual(self.client.post('/auth/accept-invitation', json=body).status_code, 400)
@@ -99,9 +101,12 @@ class AccountTests(unittest.TestCase):
         })
         self.assertEqual(response.status_code, 201, response.text)
         data = response.json()
-        if verify and 'verification_code' in data:
+        if verify:
+            self.client.post('/auth/request-verification-code', json={'username_or_email': username})
+            with closing(connect(self.path)) as connection:
+                code = connection.execute('SELECT code FROM email_verifications WHERE user_id = ? ORDER BY id DESC', (data['id'],)).fetchone()[0]
             self.client.post('/auth/verify-email', json={
-                'username_or_email': username, 'code': data['verification_code']
+                'username_or_email': username, 'code': code
             })
         return data
 
@@ -173,7 +178,10 @@ class AccountTests(unittest.TestCase):
         self.assertEqual(response.status_code, 201)
         data = response.json()
         self.assertEqual(data['role'], 'staff')
-        self.client.post('/auth/verify-email', json={'username_or_email': 'helper', 'code': data['verification_code']})
+        self.client.post('/auth/request-verification-code', json={'username_or_email': 'newadmin'})
+        with closing(connect(self.path)) as connection:
+            code = connection.execute('SELECT code FROM email_verifications WHERE user_id = ? ORDER BY id DESC', (data['id'],)).fetchone()[0]
+        self.client.post('/auth/verify-email', json={'username_or_email': 'helper', 'code': code})
         staff = self.login('helper')
         self.client.post('/orders', json={'item_id': 1, 'quantity': 1})
         self.assertEqual(self.client.get('/orders', headers=staff).status_code, 200)
@@ -221,6 +229,35 @@ class AccountTests(unittest.TestCase):
         self.assertEqual(self.client.post('/auth/login', json={'username': 'alice', 'password': PASSWORD}).status_code, 401)
         self.login('alice', new_pass)
 
+    def test_password_reset_flow(self):
+        self.register('alice')
+        req = self.client.post('/auth/request-password-reset', json={'username_or_email': 'alice@example.com'})
+        self.assertEqual(req.status_code, 200)
+        self.assertTrue(req.json()['sent'])
+
+        with closing(connect(self.path)) as connection:
+            token_hash = connection.execute('SELECT token_hash FROM password_resets ORDER BY id DESC LIMIT 1').fetchone()[0]
+
+        import hashlib, secrets
+        # Verify token confirmation
+        with closing(connect(self.path)) as connection, connection:
+            token = secrets.token_urlsafe(32)
+            thash = hashlib.sha256(token.encode()).hexdigest()
+            user_id = connection.execute("SELECT id FROM users WHERE username = 'alice'").fetchone()[0]
+            connection.execute('INSERT INTO password_resets (token_hash, user_id, expires_at) VALUES (?, ?, ?)',
+                               (thash, user_id, 9999999999.0))
+
+        new_pwd = PASSWORD + 'Reset1!'
+        confirm = self.client.post('/auth/confirm-password-reset', json={
+            'token': token,
+            'new_password': new_pwd
+        })
+        self.assertEqual(confirm.status_code, 200)
+        self.assertTrue(confirm.json()['reset'])
+
+        self.assertEqual(self.client.post('/auth/login', json={'username': 'alice', 'password': PASSWORD}).status_code, 401)
+        self.login('alice', new_pwd)
+
     def test_login_is_rate_limited(self):
         for _ in range(10):
             self.assertEqual(self.client.post('/auth/login', json={'username': 'unknown', 'password': 'wrong'}).status_code, 401)
@@ -233,6 +270,17 @@ class AccountTests(unittest.TestCase):
         self.assertEqual(res.status_code, 200)
         self.assertTrue(res.json()['email_verified'])
         self.login('unverified')
+
+    def test_user_can_delete_own_account_and_admin_can_delete_users(self):
+        user = self.register('deleteme')
+        user_auth = self.login('deleteme')
+        self.assertEqual(self.client.delete('/auth/me', headers=user_auth).status_code, 200)
+        self.assertEqual(self.client.get('/auth/me', headers=user_auth).status_code, 401)
+        self.assertEqual(self.client.post('/auth/login', json={'username': 'deleteme', 'password': PASSWORD}).status_code, 401)
+
+        other = self.register('adminwilldelete')
+        self.assertEqual(self.client.delete(f"/admin/users/{other['id']}", headers=self.admin).status_code, 200)
+        self.assertEqual(self.client.post('/auth/login', json={'username': 'adminwilldelete', 'password': PASSWORD}).status_code, 401)
 
     def test_bootstrap_does_not_overwrite_password_or_promote_customer(self):
         self.register('alice')

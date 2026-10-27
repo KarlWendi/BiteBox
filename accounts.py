@@ -93,6 +93,9 @@ def initialise_accounts(connection):
     connection.execute("""CREATE TABLE IF NOT EXISTS email_verifications (
         id INTEGER PRIMARY KEY, user_id INTEGER NOT NULL REFERENCES users(id),
         code TEXT NOT NULL, expires_at REAL NOT NULL, used_at REAL)""")
+    connection.execute("""CREATE TABLE IF NOT EXISTS password_resets (
+        id INTEGER PRIMARY KEY, token_hash TEXT NOT NULL UNIQUE, user_id INTEGER NOT NULL REFERENCES users(id),
+        expires_at REAL NOT NULL, used_at REAL)""")
     connection.execute("""CREATE TABLE IF NOT EXISTS sessions (
         token_hash TEXT PRIMARY KEY, user_id INTEGER NOT NULL REFERENCES users(id),
         expires_at REAL NOT NULL)""")
@@ -196,10 +199,26 @@ class LoginRequest(BaseModel):
     password: str = Field(min_length=1, max_length=128)
 
 
+class RequestCodeRequest(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+    username_or_email: str = Field(min_length=1, max_length=128)
+
+
 class VerifyEmailRequest(BaseModel):
     model_config = ConfigDict(extra='forbid')
     username_or_email: str = Field(min_length=1, max_length=128)
     code: str = Field(min_length=1, max_length=128)
+
+
+class RequestPasswordResetRequest(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+    username_or_email: str = Field(min_length=1, max_length=128)
+
+
+class ConfirmPasswordResetRequest(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+    token: str = Field(min_length=20, max_length=128)
+    new_password: str = Field(min_length=8, max_length=128)
 
 
 class InvitationRegistration(CustomerRegistration):
@@ -275,6 +294,58 @@ def account_router():
                            (user_id, code, expires))
         return code
 
+    def create_password_reset_token(connection, user_id):
+        token = secrets.token_urlsafe(32)
+        token_hash = hashlib.sha256(token.encode()).hexdigest()
+        expires = time.time() + 3600
+        connection.execute('INSERT INTO password_resets (token_hash, user_id, expires_at) VALUES (?, ?, ?)',
+                           (token_hash, user_id, expires))
+        return token
+
+    def send_password_reset_email(email, token):
+        base_url = os.environ.get('TAKEAWAY_WEBSITE_URL', 'https://takeaway-ordering-demo.onrender.com/').rstrip('/') + '/'
+        reset_link = f"{base_url}?reset_token={token}"
+        smtp_host = os.environ.get('SMTP_HOST')
+        smtp_port = int(os.environ.get('SMTP_PORT', 587))
+        smtp_user = os.environ.get('SMTP_USER')
+        smtp_pass = os.environ.get('SMTP_PASS')
+        if smtp_host and smtp_user and smtp_pass:
+            import smtplib
+            from email.mime.text import MIMEText
+            msg = MIMEText(f"Click the link below to reset your BiteBox password:\n\n{reset_link}")
+            msg['Subject'] = 'Reset your BiteBox Password'
+            msg['From'] = smtp_user
+            msg['To'] = email
+            try:
+                with smtplib.SMTP(smtp_host, smtp_port) as server:
+                    server.starttls()
+                    server.login(smtp_user, smtp_pass)
+                    server.sendmail(smtp_user, [email], msg.as_string())
+            except Exception as err:
+                print(f"[SMTP ERROR] Failed to send password reset email to {email}: {err}")
+        print(f"[EMAIL DISPATCH] Password reset link {reset_link} sent to {email}")
+
+    def send_verification_email(email, code):
+        smtp_host = os.environ.get('SMTP_HOST')
+        smtp_port = int(os.environ.get('SMTP_PORT', 587))
+        smtp_user = os.environ.get('SMTP_USER')
+        smtp_pass = os.environ.get('SMTP_PASS')
+        if smtp_host and smtp_user and smtp_pass:
+            import smtplib
+            from email.mime.text import MIMEText
+            msg = MIMEText(f"Your BiteBox email verification code is: {code}")
+            msg['Subject'] = 'Your BiteBox Email Verification Code'
+            msg['From'] = smtp_user
+            msg['To'] = email
+            try:
+                with smtplib.SMTP(smtp_host, smtp_port) as server:
+                    server.starttls()
+                    server.login(smtp_user, smtp_pass)
+                    server.sendmail(smtp_user, [email], msg.as_string())
+            except Exception as err:
+                print(f"[SMTP ERROR] Failed to send email to {email}: {err}")
+        print(f"[EMAIL DISPATCH] Verification code {code} sent to {email}")
+
     def create_user(connection, credentials, role):
         username = normalise_username(credentials.username)
         email = normalise_email(credentials.email)
@@ -291,10 +362,9 @@ def account_router():
                 )
                 user_id = cursor.lastrowid
                 code = create_verification_code(connection, user_id)
+                send_verification_email(email, code)
                 user_row = connection.execute('SELECT * FROM users WHERE id = ?', (user_id,)).fetchone()
-                res = public_user(user_row)
-                res['verification_code'] = code
-                return res
+                return public_user(user_row)
         except sqlite3.IntegrityError as error:
             raise HTTPException(409, 'That username or email is unavailable.') from error
 
@@ -331,11 +401,10 @@ def account_router():
                     raise HTTPException(409, 'That username or email is unavailable. Choose another username; your invitation is still valid.') from error
                 user_id = cursor.lastrowid
                 code = create_verification_code(connection, user_id)
+                send_verification_email(email, code)
                 connection.execute('UPDATE admin_invitations SET used_at = ? WHERE id = ?', (now, invitation['id']))
                 user_row = connection.execute('SELECT * FROM users WHERE id = ?', (user_id,)).fetchone()
-                res = public_user(user_row)
-                res['verification_code'] = code
-                return res
+                return public_user(user_row)
 
     @router.post('/auth/register', status_code=201)
     def register(credentials: CustomerRegistration, request: Request):
@@ -343,6 +412,59 @@ def account_router():
             address = request.client.host if request.client else 'unknown'
             throttle(connection, [('register:' + address, 30)])
             return create_user(connection, credentials, 'customer')
+
+    @router.post('/auth/request-verification-code')
+    def request_verification_code(body: RequestCodeRequest, request: Request):
+        identifier = body.username_or_email.strip().lower()
+        with closing(connect(request.app.state.database_path)) as connection:
+            address = request.client.host if request.client else 'unknown'
+            throttle(connection, [('request-code:' + identifier, 10), ('request-code:' + address, 30)])
+            user = connection.execute('SELECT * FROM users WHERE username = ? OR email = ?', (identifier, identifier)).fetchone()
+            if not user:
+                raise HTTPException(404, 'Account not found. Please check your email address or username.')
+            if user['email_verified']:
+                return {'sent': False, 'verified': True, 'message': 'Email address is already verified. You may sign in.'}
+            with connection:
+                code = create_verification_code(connection, user['id'])
+                send_verification_email(user['email'], code)
+            return {'sent': True, 'email': user['email'], 'username': user['username'],
+                    'message': f"A verification code has been sent to {user['email']}."}
+
+    @router.post('/auth/request-password-reset')
+    def request_password_reset(body: RequestPasswordResetRequest, request: Request):
+        identifier = body.username_or_email.strip().lower()
+        with closing(connect(request.app.state.database_path)) as connection:
+            address = request.client.host if request.client else 'unknown'
+            throttle(connection, [('reset-pwd:' + identifier, 10), ('reset-pwd:' + address, 30)])
+            user = connection.execute('SELECT * FROM users WHERE username = ? OR email = ?', (identifier, identifier)).fetchone()
+            if not user or not user['active']:
+                return {'sent': True, 'message': 'If an active account exists for that email/username, a password reset link has been sent to your email.'}
+            with connection:
+                token = create_password_reset_token(connection, user['id'])
+                send_password_reset_email(user['email'], token)
+            return {'sent': True, 'email': user['email'], 'message': 'If an active account exists for that email/username, a password reset link has been sent to your email.'}
+
+    @router.post('/auth/confirm-password-reset')
+    def confirm_password_reset(body: ConfirmPasswordResetRequest, request: Request):
+        validate_password(body.new_password)
+        token_hash = hashlib.sha256(body.token.encode()).hexdigest()
+        with closing(connect(request.app.state.database_path)) as connection:
+            address = request.client.host if request.client else 'unknown'
+            throttle(connection, [('confirm-reset:' + address, 30)])
+            reset_row = connection.execute(
+                """SELECT id, user_id FROM password_resets
+                   WHERE token_hash = ? AND expires_at > ? AND used_at IS NULL""",
+                (token_hash, time.time())).fetchone()
+            if not reset_row:
+                raise HTTPException(400, 'Invalid or expired password reset link.')
+            user = connection.execute('SELECT * FROM users WHERE id = ?', (reset_row['user_id'],)).fetchone()
+            if not user or not user['active']:
+                raise HTTPException(400, 'Invalid request or account inactive.')
+            with connection:
+                connection.execute('UPDATE password_resets SET used_at = ? WHERE id = ?', (time.time(), reset_row['id']))
+                connection.execute('UPDATE users SET password_hash = ? WHERE id = ?', (password_hash(body.new_password), user['id']))
+                connection.execute('DELETE FROM sessions WHERE user_id = ?', (user['id'],))
+            return {'reset': True, 'message': 'Password has been reset successfully. You may now sign in with your new password.'}
 
     @router.post('/auth/verify-email')
     def verify_email(body: VerifyEmailRequest, request: Request):
@@ -390,6 +512,19 @@ def account_router():
     def me(user=Depends(require_account)):
         return user
 
+    @router.delete('/auth/me')
+    def delete_own_account(request: Request, user=Depends(require_account)):
+        with closing(connect(request.app.state.database_path)) as connection, connection:
+            connection.execute('BEGIN IMMEDIATE')
+            if user['role'] == 'admin':
+                admin_count = connection.execute("SELECT COUNT(*) FROM users WHERE role = 'admin'").fetchone()[0]
+                if admin_count <= 1:
+                    raise HTTPException(409, 'Cannot delete the sole administrator account.')
+            connection.execute('DELETE FROM sessions WHERE user_id = ?', (user['id'],))
+            connection.execute('DELETE FROM email_verifications WHERE user_id = ?', (user['id'],))
+            connection.execute('DELETE FROM users WHERE id = ?', (user['id'],))
+        return {'deleted': True, 'message': 'Account deleted successfully.'}
+
     @router.post('/auth/logout')
     def logout(request: Request):
         authorization = request.headers.get('Authorization', '')
@@ -421,6 +556,20 @@ def account_router():
     def create_staff(credentials: StaffCredentials, request: Request):
         with closing(connect(request.app.state.database_path)) as connection:
             return create_user(connection, credentials, 'staff')
+
+    @router.delete('/admin/users/{user_id}', dependencies=[Depends(require_admin)])
+    def delete_user_account(user_id: int, request: Request):
+        with closing(connect(request.app.state.database_path)) as connection, connection:
+            connection.execute('BEGIN IMMEDIATE')
+            target = connection.execute('SELECT * FROM users WHERE id = ?', (user_id,)).fetchone()
+            if not target:
+                raise HTTPException(404, 'Account not found.')
+            if target['role'] == 'admin':
+                raise HTTPException(409, 'Administrator accounts cannot be deleted here.')
+            connection.execute('DELETE FROM sessions WHERE user_id = ?', (user_id,))
+            connection.execute('DELETE FROM email_verifications WHERE user_id = ?', (user_id,))
+            connection.execute('DELETE FROM users WHERE id = ?', (user_id,))
+        return {'deleted': True, 'id': user_id}
 
     @router.patch('/admin/users/{user_id}', dependencies=[Depends(require_admin)])
     def update_user_state(user_id: int, body: AccountState, request: Request):

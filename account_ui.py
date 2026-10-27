@@ -53,35 +53,115 @@ def valid_registration(username, password, confirm, name, surname, email, phone_
     return True
 
 
-def show_email_verification():
-    st.subheader('Verify your email')
-    st.caption('Enter your registered username or email address and the verification code.')
+def show_forgot_password():
+    st.subheader('Forgot password')
 
-    prefilled_identifier = st.session_state.get('pending_verification_user', '')
-    prefilled_code = st.session_state.get('pending_verification_code', '')
-    if prefilled_code:
-        st.info(f"Your verification code is: {prefilled_code}")
+    reset_token = st.session_state.get('reset_password_token')
 
-    with st.form('verify_email_form'):
-        identifier = st.text_input('Username or Email address', value=prefilled_identifier)
-        code = st.text_input('Verification code', value=prefilled_code)
-        if st.form_submit_button('Verify Email'):
-            try:
-                res = web_client.request_api('POST', '/auth/verify-email', json={
-                    'username_or_email': identifier,
-                    'code': code
-                })
-            except APIError as error:
-                st.error(str(error))
-            else:
-                st.session_state.pop('pending_verification_user', None)
-                st.session_state.pop('pending_verification_code', None)
-                st.session_state['account_notice'] = res.get('message', 'Email verified successfully. You may now sign in.')
-                st.session_state['account_page'] = True
-                st.rerun()
+    if reset_token:
+        st.caption('Enter your new password below.')
+        with st.form('confirm_reset_form'):
+            new_password = st.text_input('New password', type='password', help='At least 8 characters with upper, lower, digit and special char.')
+            confirm_password = st.text_input('Confirm new password', type='password')
+            if st.form_submit_button('Reset Password'):
+                if new_password != confirm_password:
+                    st.error('The passwords do not match.')
+                else:
+                    try:
+                        res = web_client.request_api('POST', '/auth/confirm-password-reset', json={
+                            'token': reset_token,
+                            'new_password': new_password
+                        })
+                    except APIError as error:
+                        st.error(str(error))
+                    else:
+                        st.session_state.pop('reset_password_token', None)
+                        st.session_state['account_notice'] = res.get('message', 'Password reset successfully. You may now sign in.')
+                        st.session_state['account_page'] = True
+                        st.rerun()
+    else:
+        sent_notice = st.session_state.get('reset_email_sent_notice')
+        if sent_notice:
+            st.info(sent_notice)
+        st.caption('Enter your registered email address or username to receive a password reset link.')
+        with st.form('request_reset_form'):
+            email = st.text_input('Email address or username')
+            if st.form_submit_button('Send reset link'):
+                if not email.strip():
+                    st.error('Please enter your email address or username.')
+                else:
+                    try:
+                        res = web_client.request_api('POST', '/auth/request-password-reset', json={
+                            'username_or_email': email
+                        })
+                    except APIError as error:
+                        st.error(str(error))
+                    else:
+                        st.session_state['reset_email_sent_notice'] = res.get('message', 'If an account exists, a reset link has been sent.')
+                        st.rerun()
+
     if st.button('Back to sign in', type='tertiary'):
-        st.session_state.pop('pending_verification_user', None)
-        st.session_state.pop('pending_verification_code', None)
+        st.session_state.pop('reset_password_token', None)
+        st.session_state.pop('reset_email_sent_notice', None)
+        st.session_state['account_page'] = True
+        st.rerun()
+
+
+def show_email_verification():
+    st.subheader('Verify your email address')
+
+    prefilled_email = st.session_state.get('pending_verification_email', '')
+    step = st.session_state.get('verification_step', 'request_code')
+
+    if step == 'enter_code':
+        st.info('A code has been sent to the email you have provided.')
+        with st.form('verify_code_form'):
+            email = st.text_input('Email address', value=prefilled_email)
+            code = st.text_input('Verification code', value='')
+            if st.form_submit_button('Verify Email'):
+                try:
+                    res = web_client.request_api('POST', '/auth/verify-email', json={
+                        'username_or_email': email,
+                        'code': code
+                    })
+                except APIError as error:
+                    st.error(str(error))
+                else:
+                    st.session_state.pop('pending_verification_email', None)
+                    st.session_state.pop('verification_step', None)
+                    st.session_state['account_notice'] = res.get('message', 'Email verified successfully. You may now sign in.')
+                    st.session_state['account_page'] = True
+                    st.rerun()
+        if st.button('Change email address or resend code', type='tertiary'):
+            st.session_state['verification_step'] = 'request_code'
+            st.rerun()
+    else:
+        st.caption('Enter your registered email address to receive your verification code.')
+        with st.form('request_code_form'):
+            email = st.text_input('Email address', value=prefilled_email)
+            if st.form_submit_button('Continue'):
+                if not email.strip():
+                    st.error('Please enter your email address.')
+                else:
+                    try:
+                        res = web_client.request_api('POST', '/auth/request-verification-code', json={
+                            'username_or_email': email
+                        })
+                    except APIError as error:
+                        st.error(str(error))
+                    else:
+                        st.session_state['pending_verification_email'] = email.strip()
+                        if res.get('verified'):
+                            st.session_state['account_notice'] = res.get('message', 'Email address is already verified.')
+                            st.session_state['account_page'] = True
+                            st.rerun()
+                        else:
+                            st.session_state['verification_step'] = 'enter_code'
+                            st.rerun()
+
+    if st.button('Back to sign in', type='tertiary'):
+        st.session_state.pop('pending_verification_email', None)
+        st.session_state.pop('verification_step', None)
         st.session_state['account_page'] = True
         st.rerun()
 
@@ -132,6 +212,21 @@ def show_account():
                             clear_account()
                             st.session_state['account_notice'] = 'Password updated. Please sign in again.'
                             st.rerun()
+        with st.expander('Delete account'):
+            st.warning('Deleting your account is permanent and cannot be undone.')
+            with st.form('delete_account_form'):
+                st.caption('Enter your password to confirm account termination.')
+                confirm_password = st.text_input('Confirm password', type='password', key='delete_confirm_pass')
+                if st.form_submit_button('Permanently delete account', type='primary'):
+                    try:
+                        web_client.request_api('POST', '/auth/login', json={'username': user['username'], 'password': confirm_password})
+                        web_client.request_api('DELETE', '/auth/me', headers=account_headers())
+                    except APIError as error:
+                        st.error(str(error))
+                    else:
+                        clear_account()
+                        st.session_state['account_notice'] = 'Your account has been deleted.'
+                        st.rerun()
         if user['role'] == 'admin':
             show_admin()
     else:
@@ -145,15 +240,21 @@ def show_account():
                 except APIError as error:
                     st.error(str(error))
                     if 'Email not verified' in str(error):
-                        st.session_state['pending_verification_user'] = username
+                        st.session_state['pending_verification_email'] = username
                 else:
                     st.session_state['account_session'] = session
                     st.session_state.pop('staff_auth', None)
                     st.session_state.pop('staff_expires', None)
                     st.rerun()
-        if st.button('Need to verify your email?', type='tertiary'):
-            st.session_state['account_page'] = 'verify'
-            st.rerun()
+        col1, col2 = st.columns(2)
+        with col1:
+            if st.button('Forgot password?', type='tertiary'):
+                st.session_state['account_page'] = 'forgot_password'
+                st.rerun()
+        with col2:
+            if st.button('Need to verify your email?', type='tertiary'):
+                st.session_state['account_page'] = 'verify'
+                st.rerun()
         st.caption('New administrator? Ask an existing administrator for an invitation link. Public registration creates a customer account.')
         if st.button("Don't have an account? Create a customer account", type='tertiary'):
             st.session_state['account_page'] = 'register'
@@ -185,10 +286,10 @@ def show_registration():
                 except APIError as error:
                     st.error(str(error))
                 else:
-                    st.session_state['pending_verification_user'] = username
-                    st.session_state['pending_verification_code'] = res.get('verification_code', '')
+                    st.session_state['pending_verification_email'] = email.strip()
+                    st.session_state['verification_step'] = 'request_code'
                     st.session_state['account_page'] = 'verify'
-                    st.session_state['account_notice'] = f"Account created! Your verification code is {res.get('verification_code', '')}. Please verify your email to activate your account."
+                    st.session_state['account_notice'] = 'Account created! Enter your email address below and click Continue to receive your verification code.'
                     st.rerun()
 
 
@@ -231,8 +332,7 @@ def show_admin():
                     except APIError as error:
                         st.error(str(error))
                     else:
-                        code = res.get('verification_code', '')
-                        st.session_state['account_notice'] = f"Staff account created! Verification code is {code}."
+                        st.session_state['account_notice'] = 'Staff account created! A verification code has been sent to their email.'
                         st.rerun()
 
         for user in users:
@@ -248,13 +348,24 @@ def show_admin():
             if user['role'] == 'admin':
                 continue
             action = 'Disable' if user['active'] else 'Enable'
-            if st.button(f"{action} {user['username']}", key=f"access-{user['id']}"):
-                try:
-                    web_client.request_api('PATCH', f"/admin/users/{user['id']}", headers=account_headers(), json={'active': not bool(user['active'])})
-                except APIError as error:
-                    st.error(str(error))
-                else:
-                    st.rerun()
+            col1, col2 = st.columns(2)
+            with col1:
+                if st.button(f"{action} {user['username']}", key=f"access-{user['id']}"):
+                    try:
+                        web_client.request_api('PATCH', f"/admin/users/{user['id']}", headers=account_headers(), json={'active': not bool(user['active'])})
+                    except APIError as error:
+                        st.error(str(error))
+                    else:
+                        st.rerun()
+            with col2:
+                if st.button(f"Delete {user['username']}", key=f"delete-{user['id']}"):
+                    try:
+                        web_client.request_api('DELETE', f"/admin/users/{user['id']}", headers=account_headers())
+                    except APIError as error:
+                        st.error(str(error))
+                    else:
+                        st.session_state['account_notice'] = f"Account {user['username']} deleted."
+                        st.rerun()
         st.subheader('Stock')
         by_id = {item['id']: item for item in menu}
         if not by_id:
@@ -352,10 +463,10 @@ def show_invitation_registration():
                         st.error(str(error))
                     else:
                         st.session_state.pop('admin_invite_token', None)
-                        st.session_state['pending_verification_user'] = username
-                        st.session_state['pending_verification_code'] = res.get('verification_code', '')
+                        st.session_state['pending_verification_email'] = email.strip()
+                        st.session_state['verification_step'] = 'request_code'
                         st.session_state['account_page'] = 'verify'
-                        st.session_state['account_notice'] = f"Administrator account created! Your verification code is {res.get('verification_code', '')}. Please verify your email to activate your account."
+                        st.session_state['account_notice'] = 'Administrator account created! Enter your email address below and click Continue to receive your verification code.'
                         st.rerun()
     if st.button('Return to sign in', type='tertiary'):
         st.session_state.pop('admin_invite_token', None)

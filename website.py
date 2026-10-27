@@ -7,10 +7,15 @@ from account_ui import show_account, show_registration, show_email_verification,
 from web_client import APIError, request_api
 
 st.set_page_config(page_title="BiteBox | Fresh food, fast", page_icon="🍔", layout="wide")
-# Remove the bearer invitation from the visible URL before rendering external assets.
+# Remove query parameters from the visible URL before rendering external assets.
 if 'admin_invite' in st.query_params:
     st.session_state['admin_invite_token'] = st.query_params['admin_invite'][:128]
     del st.query_params['admin_invite']
+    st.session_state['staff_page'] = False
+if 'reset_token' in st.query_params:
+    st.session_state['reset_password_token'] = st.query_params['reset_token'][:128]
+    del st.query_params['reset_token']
+    st.session_state['account_page'] = 'forgot_password'
     st.session_state['staff_page'] = False
 st.markdown("""
 <style>
@@ -59,10 +64,13 @@ if st.session_state.get('account_page', False):
     page = st.session_state['account_page']
     registering = page == 'register' and not st.session_state.get('account_session')
     verifying = page == 'verify' and not st.session_state.get('account_session')
+    forgot_pwd = page == 'forgot_password' and not st.session_state.get('account_session')
     if registering:
         st.title('Create a customer account')
     elif verifying:
         st.title('Verify your email address')
+    elif forgot_pwd:
+        st.title('Reset your password')
     else:
         st.title('BiteBox · Your account')
     if st.button('← Back to your order', type='tertiary'):
@@ -73,6 +81,9 @@ if st.session_state.get('account_page', False):
         show_registration()
     elif verifying:
         show_email_verification()
+    elif forgot_pwd:
+        from account_ui import show_forgot_password
+        show_forgot_password()
     else:
         show_account()
     st.stop()
