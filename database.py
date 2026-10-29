@@ -26,9 +26,15 @@ class InsufficientStockError(ValueError):
 
 # A function to connect to the SQLite database, enabling foreign key constraints and returning a connection object for executing SQL queries.
 def connect(database_path=DATABASE_PATH):
-    connection = sqlite3.connect(database_path)
+    connection = sqlite3.connect(database_path, timeout=30.0)
     connection.row_factory = sqlite3.Row
     connection.execute("PRAGMA foreign_keys = ON")
+    connection.execute("PRAGMA busy_timeout = 30000")
+    if str(database_path) != ":memory:" and not str(database_path).startswith(":memory:"):
+        try:
+            connection.execute("PRAGMA journal_mode = WAL")
+        except sqlite3.OperationalError:
+            pass
     return connection
 
 # A function to initialise the database, creating the products and orders tables if they do not exist, and populating the products 
