@@ -21,7 +21,8 @@ def order_table(orders):
 def customer_orders():
     if st.session_state.get('account_session'):
         try:
-            orders = web_client.request_api('GET', '/me/orders', headers=account_headers())
+            with st.spinner("Checking your latest order status..."):
+                orders = web_client.request_api('GET', '/me/orders', headers=account_headers())
         except APIError as error:
             st.error(str(error))
         else:
@@ -34,7 +35,8 @@ def customer_orders():
         st.info("Place an order or enter your private tracking code to follow its progress.")
     for code, order_id in list(codes.items()):
         try:
-            order = web_client.request_api("POST", "/track", json={"tracking_code": code})
+            with st.spinner(f"Updating order #{order_id} progress..."):
+                order = web_client.request_api("POST", "/track", json={"tracking_code": code})
         except APIError as error:
             st.error(str(error))
         else:
@@ -92,7 +94,8 @@ def show_tracking():
         code = st.text_input("Private tracking code", type="password")
         if st.form_submit_button("Track order"):
             try:
-                order = web_client.request_api("POST", "/track", json={"tracking_code": code.strip()})
+                with st.spinner("Looking up your tracking code..."):
+                    order = web_client.request_api("POST", "/track", json={"tracking_code": code.strip()})
             except APIError as error:
                 st.error(str(error))
             else:

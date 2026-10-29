@@ -31,9 +31,73 @@ h1,h2,h3{font-family:'Outfit',sans-serif!important;letter-spacing:-.025em}[data-
 .footer{margin-top:3.5rem;padding:1.6rem 0;border-top:1px solid #ddd5c9;color:var(--muted);font-size:.84rem;text-align:center}
 .stButton>button,.stFormSubmitButton>button{border-radius:12px;font-weight:700;min-height:2.8rem;background:#fff;color:var(--ink);border:1px solid #d9d1c6}.stButton>button:hover,.stFormSubmitButton>button:hover{color:var(--orange);border-color:var(--orange)}.stButton>button[kind="primary"],.stFormSubmitButton>button[kind="primary"]{background:var(--orange);border-color:var(--orange);color:#fff}[data-testid="stForm"]{border:0;padding:0}[data-testid="stMetric"]{padding:1rem;background:#fff;border:1px solid #e8e0d4;border-radius:16px}[data-testid="stDataFrame"]{border-radius:15px;overflow:hidden}button[data-baseweb="tab"]{font-weight:700}
 @keyframes bitebox-spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+@keyframes bitebox-pulse { 0% { box-shadow: 0 0 0 0 rgba(255,90,31,0.6); } 70% { box-shadow: 0 0 0 12px rgba(255,90,31,0); } 100% { box-shadow: 0 0 0 0 rgba(255,90,31,0); } }
+@keyframes bitebox-shimmer { 0% { background-position: -200% 0; } 100% { background-position: 200% 0; } }
+
+/* Top-right header spinner next to Stop */
+[data-testid="stStatusWidget"] {
+    background: #ff5a1f !important;
+    color: #ffffff !important;
+    border-radius: 20px !important;
+    padding: 6px 16px !important;
+    font-weight: 700 !important;
+    box-shadow: 0 4px 15px rgba(255,90,31,0.4) !important;
+    animation: bitebox-pulse 1.8s infinite !important;
+}
+[data-testid="stStatusWidget"] svg, [data-testid="stStatusWidget"] button {
+    color: #ffffff !important;
+    fill: #ffffff !important;
+}
+
+/* Enhanced Noticeable Spinner */
+[data-testid="stSpinner"] {
+    padding: 1.2rem 1.5rem !important;
+    border-radius: 18px !important;
+    background: #ffffff !important;
+    border: 2px solid var(--orange) !important;
+    box-shadow: 0 10px 30px rgba(255,90,31,0.2) !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    gap: 1rem !important;
+    margin: 1rem 0 !important;
+}
 [data-testid="stSpinner"] svg { display: none !important; }
-[data-testid="stSpinner"] i, [data-testid="stSpinner"] div:first-child { display: inline-flex !important; align-items: center; justify-content: center; width: 32px; height: 32px; border-radius: 10px; background: var(--orange); color: #fff; font-family: 'Outfit', sans-serif; font-weight: 800; font-size: 1.1rem; animation: bitebox-spin 1s linear infinite; }
-[data-testid="stSpinner"] div:first-child::before { content: "B"; }
+[data-testid="stSpinner"] i, [data-testid="stSpinner"] div:first-child {
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    width: 38px !important;
+    height: 38px !important;
+    border-radius: 12px !important;
+    background: var(--orange) !important;
+    color: #fff !important;
+    font-family: 'Outfit', sans-serif !important;
+    font-weight: 800 !important;
+    font-size: 1.25rem !important;
+    animation: bitebox-spin 0.9s linear infinite !important;
+    box-shadow: 0 4px 12px rgba(255,90,31,0.4) !important;
+}
+[data-testid="stSpinner"] div:first-child::before { content: "🍔"; }
+[data-testid="stSpinner"] p, [data-testid="stSpinner"] span {
+    font-family: 'Outfit', sans-serif !important;
+    font-weight: 700 !important;
+    color: var(--ink) !important;
+    font-size: 1.1rem !important;
+}
+
+/* Styled Progress Bar */
+[data-testid="stProgress"] > div > div {
+    background-color: #f1e8dc !important;
+    border-radius: 12px !important;
+    height: 14px !important;
+    overflow: hidden !important;
+}
+[data-testid="stProgress"] [role="progressbar"] {
+    background: linear-gradient(90deg, #ff5a1f, #ff8c42, #ff5a1f) !important;
+    background-size: 200% 100% !important;
+    animation: bitebox-shimmer 2s linear infinite !important;
+    border-radius: 12px !important;
+}
 </style>
 """, unsafe_allow_html=True)
 
@@ -111,7 +175,9 @@ if os.environ.get("TAKEAWAY_TEMPORARY_DEMO")=="1":st.info("Demo mode: orders are
 notice=st.session_state.pop("order_notice",None)
 if notice:st.success(notice)
 st.button("↻ Refresh menu and orders")
-try:menu=request_api("GET","/menu")
+try:
+    with st.spinner("Fetching freshly prepared menu..."):
+        menu=request_api("GET","/menu")
 except APIError as error:
     st.error(str(error));st.info("The ordering service may be waking up. Wait a moment, then refresh.");st.stop()
 if "trolley" not in st.session_state:st.session_state["trolley"]={}
@@ -180,7 +246,9 @@ with trolley_column:
                 if st.button(f"Remove {item['name']}",key=f"remove-{product_id}",width="stretch"):del st.session_state["trolley"][product_id];st.rerun()
         if st.button("Checkout",type="primary",width="stretch"):
             items=[{"item_id":product_id,"quantity":amount} for product_id,amount in trolley.items()]
-            try:order=request_api("POST","/checkout",json={"items":items},headers=account_headers())
+            try:
+                with st.spinner("Placing your order with the kitchen..."):
+                    order=request_api("POST","/checkout",json={"items":items},headers=account_headers())
             except APIError as error:st.error(str(error))
             else:
                 if not st.session_state.get('account_session'):
