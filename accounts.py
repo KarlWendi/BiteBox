@@ -362,9 +362,10 @@ def account_router():
                 )
                 user_id = cursor.lastrowid
                 code = create_verification_code(connection, user_id)
-                send_verification_email(email, code)
                 user_row = connection.execute('SELECT * FROM users WHERE id = ?', (user_id,)).fetchone()
-                return public_user(user_row)
+                result = public_user(user_row)
+            send_verification_email(email, code)
+            return result
         except sqlite3.IntegrityError as error:
             raise HTTPException(409, 'That username or email is unavailable.') from error
 
@@ -401,10 +402,11 @@ def account_router():
                     raise HTTPException(409, 'That username or email is unavailable. Choose another username; your invitation is still valid.') from error
                 user_id = cursor.lastrowid
                 code = create_verification_code(connection, user_id)
-                send_verification_email(email, code)
                 connection.execute('UPDATE admin_invitations SET used_at = ? WHERE id = ?', (now, invitation['id']))
                 user_row = connection.execute('SELECT * FROM users WHERE id = ?', (user_id,)).fetchone()
-                return public_user(user_row)
+                result = public_user(user_row)
+            send_verification_email(email, code)
+            return result
 
     @router.post('/auth/register', status_code=201)
     def register(credentials: CustomerRegistration, request: Request):
@@ -426,7 +428,7 @@ def account_router():
                 return {'sent': False, 'verified': True, 'message': 'Email address is already verified. You may sign in.'}
             with connection:
                 code = create_verification_code(connection, user['id'])
-                send_verification_email(user['email'], code)
+            send_verification_email(user['email'], code)
             return {'sent': True, 'email': user['email'], 'username': user['username'],
                     'message': f"A verification code has been sent to {user['email']}."}
 
@@ -441,7 +443,7 @@ def account_router():
                 return {'sent': True, 'message': 'If an active account exists for that email/username, a password reset link has been sent to your email.'}
             with connection:
                 token = create_password_reset_token(connection, user['id'])
-                send_password_reset_email(user['email'], token)
+            send_password_reset_email(user['email'], token)
             return {'sent': True, 'email': user['email'], 'message': 'If an active account exists for that email/username, a password reset link has been sent to your email.'}
 
     @router.post('/auth/confirm-password-reset')
