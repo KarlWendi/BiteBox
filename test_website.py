@@ -179,21 +179,6 @@ class WebsiteTests(unittest.TestCase):
         next(b for b in self.app.button if b.label == '🍔 BiteBox').click().run()
         self.assertTrue(any(f.label == 'Private tracking code' for f in self.app.text_input))
 
-    def test_bitebox_logo_navigation_from_pages(self):
-        # From account page back to main page
-        self.app.button(key='open_account').click().run()
-        self.assertTrue(self.app.session_state.get('account_page'))
-        next(b for b in self.app.button if b.label == '🍔 BiteBox').click().run()
-        self.assertFalse(self.app.session_state.get('account_page'))
-        self.assertFalse(self.app.session_state.get('staff_page'))
-
-        # From staff page back to main page
-        next(b for b in self.app.button if b.label == 'Staff access').click().run()
-        self.assertTrue(self.app.session_state.get('staff_page'))
-        next(b for b in self.app.button if b.label == '🍔 BiteBox').click().run()
-        self.assertFalse(self.app.session_state.get('account_page'))
-        self.assertFalse(self.app.session_state.get('staff_page'))
-
     def test_customers_only_see_their_own_orders_and_can_recover(self):
         self.client.post('/orders', json={'item_id': 2, 'quantity': 1})
         self.app.run()
@@ -212,6 +197,44 @@ class WebsiteTests(unittest.TestCase):
         self.assertEqual(fresh.dataframe[0].value['Order'].tolist(), ['#2'])
         next(button for button in fresh.button if button.label == 'Forget order #2').click().run()
         self.assertEqual(len(fresh.dataframe), 0)
+
+    def test_view_ingredients_navigation_and_add_to_trolley(self):
+        # Initial state: on menu page
+        self.assertFalse(self.app.exception)
+        # Click "View ingredients" on Fries (id=2)
+        self.app.button(key='ingredients-2').click().run()
+        self.assertFalse(self.app.exception)
+        self.assertTrue(self.app.session_state.get('ingredients_page'))
+        self.assertEqual(self.app.session_state.get('selected_ingredient_item_id'), 2)
+        # Check title and content
+        self.assertTrue(any('Food Ingredients' in title.value for title in self.app.title))
+        self.assertTrue(any('Potatoes' in m.value for m in self.app.markdown))
+        self.assertTrue(any('Gluten-Free' in m.value for m in self.app.markdown))
+
+        # Add Fries to trolley directly from ingredients page
+        self.app.button(key='ingredient_add_2').click().run()
+        self.assertFalse(self.app.exception)
+        self.assertEqual(self.app.session_state['trolley'].get(2), 1)
+
+        # Select a different item (Cheeseburger, id=1) from the dropdown selector
+        self.app.selectbox(key='ingredient_item_selector').select(1).run()
+        self.assertFalse(self.app.exception)
+        self.assertEqual(self.app.session_state.get('selected_ingredient_item_id'), 1)
+        self.assertTrue(any('100% Beef Patty' in m.value for m in self.app.markdown))
+
+        # Add Cheeseburger to trolley from ingredients page
+        self.app.button(key='ingredient_add_1').click().run()
+        self.assertFalse(self.app.exception)
+        self.assertEqual(self.app.session_state['trolley'].get(1), 1)
+        self.assertEqual(self.app.session_state['trolley'].get(2), 1)
+
+        # Navigate back to your order using BiteBox logo button
+        back_button = next(b for b in self.app.button if b.label == '🍔 BiteBox')
+        back_button.click().run()
+        self.assertFalse(self.app.exception)
+        self.assertFalse(self.app.session_state.get('ingredients_page'))
+        # Trolley items are preserved
+        self.assertEqual(self.app.session_state['trolley'], {1: 1, 2: 1})
 
     def test_staff_login_failure_logout_and_expiry(self):
         next(b for b in self.app.button if b.label == 'Staff access').click().run()

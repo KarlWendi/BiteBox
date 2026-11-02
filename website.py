@@ -4,6 +4,7 @@ import streamlit as st
 from menu import format_price
 from tracking_ui import show_tracking, show_staff
 from account_ui import show_account, show_registration, show_email_verification, show_invitation_registration, account_headers
+from ingredients_ui import show_ingredients_page
 from web_client import APIError, request_api
 
 st.set_page_config(page_title="BiteBox | Fresh food, fast", page_icon="🍔", layout="wide")
@@ -140,13 +141,14 @@ basket_count = sum(st.session_state['trolley'].values())
 def render_top_navigation():
     session = st.session_state.get('account_session')
     account_label = 'Your account' if session else "Don't have an account? Create one or sign in"
-    is_main_page = not st.session_state.get('admin_invite_token') and not st.session_state.get('staff_page') and not st.session_state.get('account_page')
 
     col_brand, col_links = st.columns([1, 4])
     with col_brand:
         if st.button('🍔 BiteBox', key='nav_bitebox_logo', type='primary'):
+            st.session_state['ingredients_page'] = False
             st.session_state['staff_page'] = False
             st.session_state['account_page'] = False
+            st.session_state.pop('admin_invite_token', None)
             st.rerun()
     with col_links:
         link_cols = st.columns([2, 1, 1] if session and session['user']['role'] in ('staff', 'admin') else [3, 1])
@@ -162,6 +164,21 @@ def render_top_navigation():
 
 render_top_navigation()
 
+try:
+    with st.spinner("Fetching freshly prepared menu..."):
+        menu=request_api("GET","/menu")
+except APIError as error:
+    st.error(str(error));st.info("The ordering service may be waking up. Wait a moment, then refresh.");st.stop()
+if "trolley" not in st.session_state:st.session_state["trolley"]={}
+removed = set(st.session_state['trolley']) - {item['id'] for item in menu}
+if removed:
+    for product_id in removed:
+        del st.session_state['trolley'][product_id]
+    st.warning('An item is no longer on the menu and was removed from your trolley. Please review your order.')
+
+if st.session_state.get('ingredients_page', False):
+    show_ingredients_page(menu)
+    st.stop()
 if st.session_state.get('admin_invite_token'):
     show_invitation_registration()
     st.stop()
@@ -204,18 +221,6 @@ if os.environ.get("TAKEAWAY_TEMPORARY_DEMO")=="1":st.info("Demo mode: orders are
 notice=st.session_state.pop("order_notice",None)
 if notice:st.success(notice)
 st.button("↻ Refresh menu and orders")
-try:
-    with st.spinner("Fetching freshly prepared menu..."):
-        menu=request_api("GET","/menu")
-except APIError as error:
-    st.error(str(error));st.info("The ordering service may be waking up. Wait a moment, then refresh.");st.stop()
-if "trolley" not in st.session_state:st.session_state["trolley"]={}
-removed = set(st.session_state['trolley']) - {item['id'] for item in menu}
-if removed:
-    for product_id in removed:
-        del st.session_state['trolley'][product_id]
-    st.warning('An item is no longer on the menu and was removed from your trolley. Please review your order.')
-
 st.markdown('<div id="menu"></div><div class="kicker">Explore the menu</div><div class="section-title">Made for every craving</div><div class="section-copy">Add your favourites straight to your trolley.</div>',unsafe_allow_html=True)
 for start in range(0,len(menu),4):
     for column,item in zip(st.columns(4),menu[start:start+4]):
@@ -226,6 +231,10 @@ for start in range(0,len(menu),4):
             if st.button(f"Add {item['name']}", key=f"add-{item['id']}", width='stretch',
                          disabled=amount >= min(item['stock'], 50)):
                 st.session_state['trolley'][item['id']] = amount + 1
+                st.rerun()
+            if st.button("View ingredients", key=f"ingredients-{item['id']}", type="tertiary", width="stretch"):
+                st.session_state['selected_ingredient_item_id'] = item['id']
+                st.session_state['ingredients_page'] = True
                 st.rerun()
             if amount:
                 st.caption(f'{amount} in your trolley')
