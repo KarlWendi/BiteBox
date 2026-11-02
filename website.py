@@ -122,6 +122,8 @@ ICONS={"Burger":"🍔","Cheeseburger":"🍔","Mozzarella Sticks":"🧀","Chicken
 # Navigate within the same session so signing in never loses the customer's meal.
 st.markdown('''<style>
 .stButton>button[kind="tertiary"]{background:transparent;border:0;color:#1f6b45;text-decoration:underline;padding:0;min-height:1.8rem}
+.st-key-nav_bitebox_logo>button{background:var(--orange)!important;border-color:var(--orange)!important;color:#fff!important;font-family:'Outfit',sans-serif!important;font-weight:800!important;font-size:1.15rem!important;padding:0.35rem 1.1rem!important;min-height:2.6rem!important;border-radius:14px!important;box-shadow:0 4px 14px rgba(255,90,31,0.3)!important;transition:transform 0.15s, box-shadow 0.15s!important}
+.st-key-nav_bitebox_logo>button:hover{transform:translateY(-2px)!important;box-shadow:0 6px 18px rgba(255,90,31,0.45)!important}
 [data-testid="stWidgetLabel"], [data-testid="stWidgetLabel"] p {color:#17211b!important;font-weight:700!important}
 [data-testid="stTextInput"] input,[data-testid="stNumberInput"] input {background:#fff!important;color:#17211b!important;caret-color:#17211b}
 [data-testid="stTextInput"] [data-baseweb="input"],[data-testid="stNumberInput"] [data-baseweb="input"] {background:#fff!important;border-color:#68736c!important}
@@ -131,14 +133,40 @@ button:focus-visible,a:focus-visible,input:focus-visible {outline:3px solid #1f6
 .hero{padding:1.8rem 2rem}.hero h1{font-size:clamp(2rem,5vw,3.2rem)}.hero-points{flex-wrap:wrap;gap:.7rem}.section-nav{display:flex;flex-wrap:wrap;gap:1.2rem;padding:.8rem 0}.section-nav a{color:#1f6b45;font-weight:700}.order-now{display:inline-block;margin-top:1rem;background:white;color:#16442d!important;padding:.65rem 1rem;border-radius:10px;font-weight:700;text-decoration:none}
 @media(max-width:600px){.hero{padding:1.4rem}.block-container{padding-left:1rem;padding-right:1rem}.nav-note{font-size:.75rem}}
 </style>''', unsafe_allow_html=True)
+
+st.session_state.setdefault('trolley', {})
+basket_count = sum(st.session_state['trolley'].values())
+
+def render_top_navigation():
+    session = st.session_state.get('account_session')
+    account_label = 'Your account' if session else "Don't have an account? Create one or sign in"
+    is_main_page = not st.session_state.get('admin_invite_token') and not st.session_state.get('staff_page') and not st.session_state.get('account_page')
+
+    col_brand, col_links = st.columns([1, 4])
+    with col_brand:
+        if st.button('🍔 BiteBox', key='nav_bitebox_logo', type='primary'):
+            st.session_state['staff_page'] = False
+            st.session_state['account_page'] = False
+            st.rerun()
+    with col_links:
+        link_cols = st.columns([2, 1, 1] if session and session['user']['role'] in ('staff', 'admin') else [3, 1])
+        with link_cols[0]:
+            if st.button(account_label, type='tertiary', key='open_account'):
+                st.session_state['account_page'] = True
+                st.rerun()
+        if session and session['user']['role'] in ('staff', 'admin'):
+            with link_cols[1]:
+                if st.button('Kitchen controls', type='tertiary'):
+                    st.session_state['staff_page'] = True
+                    st.rerun()
+
+render_top_navigation()
+
 if st.session_state.get('admin_invite_token'):
     show_invitation_registration()
     st.stop()
 if st.session_state.get('staff_page', False):
     st.title('BiteBox · Staff')
-    if st.button('← Back to your order', type='tertiary'):
-        st.session_state['staff_page'] = False
-        st.rerun()
     notice = st.session_state.pop('order_notice', None)
     if notice:
         st.success(notice)
@@ -157,9 +185,6 @@ if st.session_state.get('account_page', False):
         st.title('Reset your password')
     else:
         st.title('BiteBox · Your account')
-    if st.button('← Back to your order', type='tertiary'):
-        st.session_state['account_page'] = False
-        st.rerun()
     st.caption('Your trolley is saved while you sign in or create an account.')
     if registering:
         show_registration()
@@ -172,19 +197,7 @@ if st.session_state.get('account_page', False):
         show_account()
     st.stop()
 
-account_label = 'Your account' if st.session_state.get('account_session') else "Don't have an account? Create one or sign in"
-if st.button(account_label, type='tertiary', key='open_account'):
-    st.session_state['account_page'] = True
-    st.rerun()
-
-st.session_state.setdefault('trolley', {})
-basket_count = sum(st.session_state['trolley'].values())
 st.markdown(f'<nav class="section-nav" aria-label="Store navigation"><a href="#menu">Menu</a><a href="#your-order">Your order ({basket_count})</a><a href="#track-order">Track order</a></nav>', unsafe_allow_html=True)
-session = st.session_state.get('account_session')
-if session and session['user']['role'] in ('staff', 'admin'):
-    if st.button('Kitchen controls', type='tertiary'):
-        st.session_state['staff_page'] = True
-        st.rerun()
 
 st.markdown("""<div class="site-nav"><div class="brand"><span class="brand-mark">B</span> BiteBox</div><div class="nav-note">Order online · Collect fresh</div></div><section class="hero"><span class="eyebrow">Freshly made · Ready fast</span><h1>Big flavour.<br>Zero fuss.</h1><p>Build your perfect order from our freshly prepared favourites, check out in seconds, and follow it from kitchen to collection.</p><div class="hero-points"><span>✓ Fresh ingredients</span><span>✓ Live order status</span><span>✓ Easy collection</span></div><a class="order-now" href="#menu">Order now</a></section>""",unsafe_allow_html=True)
 if os.environ.get("TAKEAWAY_TEMPORARY_DEMO")=="1":st.info("Demo mode: orders are simulated, shared by visitors and may reset when the free service restarts.")

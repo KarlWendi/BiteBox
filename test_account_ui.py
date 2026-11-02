@@ -191,7 +191,7 @@ class AccountWebsiteTests(unittest.TestCase):
         self.register('alice')
         self.login('alice')
         self.assertFalse(any(button.label == 'Create staff account' for button in self.app.button))
-        self.click('← Back to your order')
+        self.click('🍔 BiteBox')
         self.click('Add to trolley')
         self.click('Checkout')
         self.assertEqual(self.app.dataframe[0].value['Order'].tolist(), ['#1'])
@@ -205,7 +205,7 @@ class AccountWebsiteTests(unittest.TestCase):
         self.open_account()
         self.click('Sign out')
         self.login('alice')
-        self.click('← Back to your order')
+        self.click('🍔 BiteBox')
         self.assertEqual(self.app.dataframe[0].value['Order'].tolist(), ['#1'])
 
     def test_admin_stock_staff_creation_and_access_control(self):
@@ -239,7 +239,7 @@ class AccountWebsiteTests(unittest.TestCase):
         self.click('Sign out')
         self.login('helper')
         self.assertFalse(any(button.label == 'Create staff account' for button in self.app.button))
-        self.click('← Back to your order')
+        self.click('🍔 BiteBox')
         self.click('Kitchen controls')
         self.click('Order #1: mark as preparing')
 
@@ -259,7 +259,7 @@ class AccountWebsiteTests(unittest.TestCase):
         self.register('alice')
         self.assertFalse(any(b.label == 'Checkout' for b in self.app.button))
         self.login('alice')
-        self.click('← Back to your order')
+        self.click('🍔 BiteBox')
         self.assertEqual(self.app.session_state['trolley'], {1: 1})
         self.click('Checkout')
         self.assertEqual(self.app.dataframe[0].value['Order'].tolist(), ['#1'])

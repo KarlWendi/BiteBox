@@ -176,8 +176,23 @@ class WebsiteTests(unittest.TestCase):
         next(b for b in self.app.button if b.label == 'Staff access').click().run()
         self.assertTrue(any(f.label == 'Staff username' for f in self.app.text_input))
         self.assertFalse(any(f.label == 'Private tracking code' for f in self.app.text_input))
-        next(b for b in self.app.button if b.label == '← Back to your order').click().run()
+        next(b for b in self.app.button if b.label == '🍔 BiteBox').click().run()
         self.assertTrue(any(f.label == 'Private tracking code' for f in self.app.text_input))
+
+    def test_bitebox_logo_navigation_from_pages(self):
+        # From account page back to main page
+        self.app.button(key='open_account').click().run()
+        self.assertTrue(self.app.session_state.get('account_page'))
+        next(b for b in self.app.button if b.label == '🍔 BiteBox').click().run()
+        self.assertFalse(self.app.session_state.get('account_page'))
+        self.assertFalse(self.app.session_state.get('staff_page'))
+
+        # From staff page back to main page
+        next(b for b in self.app.button if b.label == 'Staff access').click().run()
+        self.assertTrue(self.app.session_state.get('staff_page'))
+        next(b for b in self.app.button if b.label == '🍔 BiteBox').click().run()
+        self.assertFalse(self.app.session_state.get('account_page'))
+        self.assertFalse(self.app.session_state.get('staff_page'))
 
     def test_customers_only_see_their_own_orders_and_can_recover(self):
         self.client.post('/orders', json={'item_id': 2, 'quantity': 1})
