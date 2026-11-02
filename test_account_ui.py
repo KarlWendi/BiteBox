@@ -37,7 +37,6 @@ class AccountWebsiteTests(unittest.TestCase):
         self.fill('Admin password', PASSWORD)
         self.fill('Confirm admin password', PASSWORD)
         self.click('Create administrator account')
-        self.click('Continue')
         with closing(connect(self.client.app.state.database_path)) as connection:
             code = connection.execute('SELECT code FROM email_verifications ORDER BY id DESC LIMIT 1').fetchone()[0]
         self.fill('Verification code', code)
@@ -63,7 +62,6 @@ class AccountWebsiteTests(unittest.TestCase):
         self.fill('Admin password', PASSWORD)
         self.fill('Confirm admin password', PASSWORD)
         self.click('Create administrator account')
-        self.click('Continue')
         with closing(connect(self.client.app.state.database_path)) as connection:
             code = connection.execute('SELECT code FROM email_verifications ORDER BY id DESC LIMIT 1').fetchone()[0]
         self.fill('Verification code', code)
@@ -88,7 +86,6 @@ class AccountWebsiteTests(unittest.TestCase):
         self.assertIn('email', self.app.error[0].value.lower())
         self.fill('Email address', 'valid@example.com')
         self.click('Create account')
-        self.click('Continue')
         with closing(connect(self.client.app.state.database_path)) as connection:
             code = connection.execute('SELECT code FROM email_verifications ORDER BY id DESC LIMIT 1').fetchone()[0]
         self.fill('Verification code', code)
@@ -116,7 +113,6 @@ class AccountWebsiteTests(unittest.TestCase):
         self.fill('Admin username', 'correctedadmin')
         self.fill('Email address', 'correctedadmin@example.com')
         self.click('Create administrator account')
-        self.click('Continue')
         with closing(connect(self.client.app.state.database_path)) as connection:
             code = connection.execute('SELECT code FROM email_verifications ORDER BY id DESC LIMIT 1').fetchone()[0]
         self.fill('Verification code', code)
@@ -181,7 +177,6 @@ class AccountWebsiteTests(unittest.TestCase):
         self.fill('Choose a password', PASSWORD)
         self.fill('Confirm password', PASSWORD)
         self.click('Create account')
-        self.click('Continue')
         with closing(connect(self.client.app.state.database_path)) as connection:
             code = connection.execute('SELECT code FROM email_verifications ORDER BY id DESC LIMIT 1').fetchone()[0]
         self.fill('Verification code', code)
@@ -285,6 +280,64 @@ class AccountWebsiteTests(unittest.TestCase):
         self.click('Reset Password')
         self.assertTrue(any('reset successfully' in notice.value.lower() for notice in self.app.success))
         self.login('alice', new_pwd)
+        self.assertTrue(any(button.label == 'Sign out' for button in self.app.button))
+
+    def test_unverified_user_login_redirects_to_verification_screen(self):
+        self.open_registration()
+        self.fill('Choose a username', 'unverified')
+        self.fill('Email address', 'unverified@example.com')
+        self.fill('First name', 'Un')
+        self.fill('Surname', 'Verified')
+        self.fill('Phone number', '+1234567890')
+        self.fill('Choose a password', PASSWORD)
+        self.fill('Confirm password', PASSWORD)
+        self.click('Create account')
+        # Simulate user clicking back to sign in
+        self.click('Back to sign in')
+        self.fill('Account username or email', 'unverified')
+        self.fill('Account password', PASSWORD)
+        self.click('Sign in')
+        # Should be redirected to verify screen
+        self.assertEqual(self.app.session_state['account_page'], 'verify')
+        self.assertEqual(self.app.session_state['verification_step'], 'enter_code')
+        self.assertEqual(self.app.session_state['pending_verification_email'], 'unverified')
+        self.assertTrue(any('verify your email' in notice.value.lower() for notice in self.app.success))
+
+        # Can now enter code and verify
+        with closing(connect(self.client.app.state.database_path)) as connection:
+            code = connection.execute('SELECT code FROM email_verifications ORDER BY id DESC LIMIT 1').fetchone()[0]
+        self.fill('Verification code', code)
+        self.click('Verify Email')
+        self.login('unverified')
+        self.assertTrue(any(button.label == 'Sign out' for button in self.app.button))
+
+    def test_resend_verification_code_and_change_email(self):
+        self.open_registration()
+        self.fill('Choose a username', 'resender')
+        self.fill('Email address', 'resender@example.com')
+        self.fill('First name', 'Re')
+        self.fill('Surname', 'Sender')
+        self.fill('Phone number', '+1234567890')
+        self.fill('Choose a password', PASSWORD)
+        self.fill('Confirm password', PASSWORD)
+        self.click('Create account')
+
+        # Test resend verification code
+        self.click('Resend verification code')
+        self.assertEqual(self.app.session_state['verification_step'], 'enter_code')
+
+        # Test change email address or username button
+        self.click('Change email address or username')
+        self.assertEqual(self.app.session_state['verification_step'], 'request_code')
+        self.fill('Email address or username', 'resender@example.com')
+        self.click('Send code')
+        self.assertEqual(self.app.session_state['verification_step'], 'enter_code')
+
+        with closing(connect(self.client.app.state.database_path)) as connection:
+            code = connection.execute('SELECT code FROM email_verifications ORDER BY id DESC LIMIT 1').fetchone()[0]
+        self.fill('Verification code', code)
+        self.click('Verify Email')
+        self.login('resender')
         self.assertTrue(any(button.label == 'Sign out' for button in self.app.button))
 
     def test_password_validation_and_change(self):
