@@ -34,7 +34,7 @@ h1,h2,h3{font-family:'Outfit',sans-serif!important;letter-spacing:-.025em}[data-
 @keyframes bitebox-pulse { 0% { box-shadow: 0 0 0 0 rgba(255,90,31,0.6); } 70% { box-shadow: 0 0 0 12px rgba(255,90,31,0); } 100% { box-shadow: 0 0 0 0 rgba(255,90,31,0); } }
 @keyframes bitebox-shimmer { 0% { background-position: -200% 0; } 100% { background-position: 200% 0; } }
 
-/* Top-right header spinner next to Stop */
+/* Top-right header spinner with Loading label */
 [data-testid="stStatusWidget"] {
     background: #ff5a1f !important;
     color: #ffffff !important;
@@ -44,9 +44,25 @@ h1,h2,h3{font-family:'Outfit',sans-serif!important;letter-spacing:-.025em}[data-
     box-shadow: 0 4px 15px rgba(255,90,31,0.4) !important;
     animation: bitebox-pulse 1.8s infinite !important;
 }
-[data-testid="stStatusWidget"] svg, [data-testid="stStatusWidget"] button {
+[data-testid="stStatusWidget"] svg {
     color: #ffffff !important;
     fill: #ffffff !important;
+}
+[data-testid="stStatusWidget"] button {
+    color: transparent !important;
+    fill: #ffffff !important;
+    pointer-events: none !important;
+    cursor: default !important;
+    font-size: 0 !important;
+    line-height: 0 !important;
+}
+[data-testid="stStatusWidget"] button::after {
+    content: "Loading..." !important;
+    font-size: 0.875rem !important;
+    line-height: normal !important;
+    font-weight: 700 !important;
+    color: #ffffff !important;
+    visibility: visible !important;
 }
 
 /* Enhanced Noticeable Spinner */
