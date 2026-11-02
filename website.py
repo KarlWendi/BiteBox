@@ -78,7 +78,7 @@ h1,h2,h3{font-family:'Outfit',sans-serif!important;letter-spacing:-.025em}[data-
     margin: 1rem 0 !important;
 }
 [data-testid="stSpinner"] svg { display: none !important; }
-[data-testid="stSpinner"] i, [data-testid="stSpinner"] div:first-child {
+[data-testid="stSpinner"] [data-testid="stSpinnerIcon"] {
     display: inline-flex !important;
     align-items: center !important;
     justify-content: center !important;
@@ -93,7 +93,7 @@ h1,h2,h3{font-family:'Outfit',sans-serif!important;letter-spacing:-.025em}[data-
     animation: bitebox-spin 0.9s linear infinite !important;
     box-shadow: 0 4px 12px rgba(255,90,31,0.4) !important;
 }
-[data-testid="stSpinner"] div:first-child::before { content: "🍔"; }
+[data-testid="stSpinner"] [data-testid="stSpinnerIcon"]::before { content: "🍔"; }
 [data-testid="stSpinner"] p, [data-testid="stSpinner"] span {
     font-family: 'Outfit', sans-serif !important;
     font-weight: 700 !important;
