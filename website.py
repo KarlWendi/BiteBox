@@ -4,6 +4,7 @@ import streamlit as st
 from menu import format_price
 from tracking_ui import show_tracking, show_staff
 from account_ui import show_account, show_registration, show_email_verification, show_invitation_registration, account_headers
+from ingredients_ui import show_ingredients_page
 from web_client import APIError, request_api
 
 st.set_page_config(page_title="BiteBox | Fresh food, fast", page_icon="🍔", layout="wide")
@@ -131,6 +132,21 @@ button:focus-visible,a:focus-visible,input:focus-visible {outline:3px solid #1f6
 .hero{padding:1.8rem 2rem}.hero h1{font-size:clamp(2rem,5vw,3.2rem)}.hero-points{flex-wrap:wrap;gap:.7rem}.section-nav{display:flex;flex-wrap:wrap;gap:1.2rem;padding:.8rem 0}.section-nav a{color:#1f6b45;font-weight:700}.order-now{display:inline-block;margin-top:1rem;background:white;color:#16442d!important;padding:.65rem 1rem;border-radius:10px;font-weight:700;text-decoration:none}
 @media(max-width:600px){.hero{padding:1.4rem}.block-container{padding-left:1rem;padding-right:1rem}.nav-note{font-size:.75rem}}
 </style>''', unsafe_allow_html=True)
+try:
+    with st.spinner("Fetching freshly prepared menu..."):
+        menu=request_api("GET","/menu")
+except APIError as error:
+    st.error(str(error));st.info("The ordering service may be waking up. Wait a moment, then refresh.");st.stop()
+if "trolley" not in st.session_state:st.session_state["trolley"]={}
+removed = set(st.session_state['trolley']) - {item['id'] for item in menu}
+if removed:
+    for product_id in removed:
+        del st.session_state['trolley'][product_id]
+    st.warning('An item is no longer on the menu and was removed from your trolley. Please review your order.')
+
+if st.session_state.get('ingredients_page', False):
+    show_ingredients_page(menu)
+    st.stop()
 if st.session_state.get('admin_invite_token'):
     show_invitation_registration()
     st.stop()
@@ -191,18 +207,6 @@ if os.environ.get("TAKEAWAY_TEMPORARY_DEMO")=="1":st.info("Demo mode: orders are
 notice=st.session_state.pop("order_notice",None)
 if notice:st.success(notice)
 st.button("↻ Refresh menu and orders")
-try:
-    with st.spinner("Fetching freshly prepared menu..."):
-        menu=request_api("GET","/menu")
-except APIError as error:
-    st.error(str(error));st.info("The ordering service may be waking up. Wait a moment, then refresh.");st.stop()
-if "trolley" not in st.session_state:st.session_state["trolley"]={}
-removed = set(st.session_state['trolley']) - {item['id'] for item in menu}
-if removed:
-    for product_id in removed:
-        del st.session_state['trolley'][product_id]
-    st.warning('An item is no longer on the menu and was removed from your trolley. Please review your order.')
-
 st.markdown('<div id="menu"></div><div class="kicker">Explore the menu</div><div class="section-title">Made for every craving</div><div class="section-copy">Add your favourites straight to your trolley.</div>',unsafe_allow_html=True)
 for start in range(0,len(menu),4):
     for column,item in zip(st.columns(4),menu[start:start+4]):
@@ -213,6 +217,10 @@ for start in range(0,len(menu),4):
             if st.button(f"Add {item['name']}", key=f"add-{item['id']}", width='stretch',
                          disabled=amount >= min(item['stock'], 50)):
                 st.session_state['trolley'][item['id']] = amount + 1
+                st.rerun()
+            if st.button("View ingredients", key=f"ingredients-{item['id']}", type="tertiary", width="stretch"):
+                st.session_state['selected_ingredient_item_id'] = item['id']
+                st.session_state['ingredients_page'] = True
                 st.rerun()
             if amount:
                 st.caption(f'{amount} in your trolley')
