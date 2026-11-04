@@ -148,19 +148,25 @@ if st.session_state.get('ingredients_page', False):
     show_ingredients_page(menu)
     st.stop()
 if st.session_state.get('admin_invite_token'):
+    if st.button('🍔 BiteBox', type='tertiary', key='nav_logo_invite'):
+        st.session_state.pop('admin_invite_token', None)
+        st.rerun()
     show_invitation_registration()
     st.stop()
 if st.session_state.get('staff_page', False):
-    st.title('BiteBox · Staff')
-    if st.button('← Back to your order', type='tertiary'):
+    if st.button('🍔 BiteBox', type='tertiary', key='nav_logo_staff'):
         st.session_state['staff_page'] = False
         st.rerun()
+    st.title('BiteBox · Staff')
     notice = st.session_state.pop('order_notice', None)
     if notice:
         st.success(notice)
     show_staff()
     st.stop()
 if st.session_state.get('account_page', False):
+    if st.button('🍔 BiteBox', type='tertiary', key='nav_logo_account'):
+        st.session_state['account_page'] = False
+        st.rerun()
     page = st.session_state['account_page']
     registering = page == 'register' and not st.session_state.get('account_session')
     verifying = page == 'verify' and not st.session_state.get('account_session')
@@ -173,9 +179,6 @@ if st.session_state.get('account_page', False):
         st.title('Reset your password')
     else:
         st.title('BiteBox · Your account')
-    if st.button('← Back to your order', type='tertiary'):
-        st.session_state['account_page'] = False
-        st.rerun()
     st.caption('Your trolley is saved while you sign in or create an account.')
     if registering:
         show_registration()
@@ -188,10 +191,15 @@ if st.session_state.get('account_page', False):
         show_account()
     st.stop()
 
-account_label = 'Your account' if st.session_state.get('account_session') else "Don't have an account? Create one or sign in"
-if st.button(account_label, type='tertiary', key='open_account'):
-    st.session_state['account_page'] = True
-    st.rerun()
+col_brand, col_acc = st.columns([1, 2])
+with col_brand:
+    if st.button('🍔 BiteBox', type='tertiary', key='nav_logo_storefront'):
+        st.rerun()
+with col_acc:
+    account_label = 'Your account' if st.session_state.get('account_session') else "Don't have an account? Create one or sign in"
+    if st.button(account_label, type='tertiary', key='open_account'):
+        st.session_state['account_page'] = True
+        st.rerun()
 
 st.session_state.setdefault('trolley', {})
 basket_count = sum(st.session_state['trolley'].values())
