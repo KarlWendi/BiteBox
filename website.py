@@ -165,7 +165,8 @@ with trolley_column:
             items=[{"item_id":product_id,"quantity":amount} for product_id,amount in trolley.items()]
             token = st.session_state.setdefault("checkout_token", secrets.token_hex(16))
             try:
-                order=request_api("POST","/checkout",json={"items":items,"idempotency_key":token},headers=account_headers())
+                with st.spinner("Placing your order with the kitchen..."):
+                    order=request_api("POST","/checkout",json={"items":items,"idempotency_key":token},headers=account_headers())
                 st.session_state.pop("checkout_token", None)
             except APIError as error:st.error(str(error))
             else:
