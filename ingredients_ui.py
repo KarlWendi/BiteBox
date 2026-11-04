@@ -22,11 +22,11 @@ ICONS = {
 
 def show_ingredients_page(menu: list[dict]):
     """Display the dedicated ingredients page with item selector and direct ordering."""
-    st.title("BiteBox · Food Ingredients")
-    if st.button("← Back to your order", type="tertiary"):
+    if st.button("🍔 BiteBox", type="tertiary", key="nav_logo_ingredients"):
         st.session_state["ingredients_page"] = False
         st.rerun()
 
+    st.title("BiteBox · Food Ingredients")
     st.caption("Check what goes into our freshly prepared food, dietary tags, and allergens.")
 
     if not menu:

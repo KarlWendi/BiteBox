@@ -176,7 +176,7 @@ class WebsiteTests(unittest.TestCase):
         next(b for b in self.app.button if b.label == 'Staff access').click().run()
         self.assertTrue(any(f.label == 'Staff username' for f in self.app.text_input))
         self.assertFalse(any(f.label == 'Private tracking code' for f in self.app.text_input))
-        next(b for b in self.app.button if b.label == '← Back to your order').click().run()
+        next(b for b in self.app.button if b.label == '🍔 BiteBox').click().run()
         self.assertTrue(any(f.label == 'Private tracking code' for f in self.app.text_input))
 
     def test_customers_only_see_their_own_orders_and_can_recover(self):
@@ -228,13 +228,20 @@ class WebsiteTests(unittest.TestCase):
         self.assertEqual(self.app.session_state['trolley'].get(1), 1)
         self.assertEqual(self.app.session_state['trolley'].get(2), 1)
 
-        # Navigate back to your order
-        back_button = next(b for b in self.app.button if b.label == '← Back to your order')
+        # Navigate back to the storefront via the BiteBox logo
+        back_button = next(b for b in self.app.button if b.label == '🍔 BiteBox')
         back_button.click().run()
         self.assertFalse(self.app.exception)
         self.assertFalse(self.app.session_state.get('ingredients_page'))
         # Trolley items are preserved
         self.assertEqual(self.app.session_state['trolley'], {1: 1, 2: 1})
+
+    def test_storefront_bitebox_logo_click_preserves_trolley(self):
+        self.app.button(key='add-1').click().run()
+        self.assertEqual(self.app.session_state['trolley'], {1: 1})
+        self.app.button(key='nav_logo_storefront').click().run()
+        self.assertFalse(self.app.exception)
+        self.assertEqual(self.app.session_state['trolley'], {1: 1})
 
     def test_staff_login_failure_logout_and_expiry(self):
         next(b for b in self.app.button if b.label == 'Staff access').click().run()
