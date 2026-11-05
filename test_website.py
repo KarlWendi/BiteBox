@@ -282,5 +282,11 @@ class WebsiteTests(unittest.TestCase):
         self.assertEqual(len(self.app.dataframe), 0)
         self.assertTrue(any(button.label == 'Log in' for button in self.app.button))
 
+    def test_spinner_css_targets_icon_and_not_first_child_div(self):
+        with open('website.py') as f:
+            content = f.read()
+        self.assertIn('[data-testid="stSpinnerIcon"]', content)
+        self.assertNotIn('[data-testid="stSpinner"] div:first-child', content)
+
 if __name__ == '__main__':
     unittest.main()
