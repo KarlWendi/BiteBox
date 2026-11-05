@@ -121,6 +121,52 @@ h1,h2,h3{font-family:'Outfit',sans-serif!important;letter-spacing:-.025em}[data-
     animation: bitebox-shimmer 2s linear infinite !important;
     border-radius: 12px !important;
 }
+
+/* Clickable Brand Logo Button Across All Views */
+div[class*="st-key-nav_logo"] button {
+    text-decoration: none !important;
+    background: transparent !important;
+    border: none !important;
+    padding: 0 !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    cursor: pointer !important;
+}
+div[class*="st-key-nav_logo"] button:hover {
+    opacity: 0.85 !important;
+}
+div[class*="st-key-nav_logo"] button > div {
+    display: inline-flex !important;
+    align-items: center !important;
+    gap: 0.65rem !important;
+}
+div[class*="st-key-nav_logo"] button span {
+    display: none !important;
+}
+div[class*="st-key-nav_logo"] button > div::before {
+    content: 'B' !important;
+    display: grid !important;
+    place-items: center !important;
+    width: 38px !important;
+    height: 38px !important;
+    border-radius: 12px !important;
+    background: var(--orange, #ff5a1f) !important;
+    color: #fff !important;
+    font-family: 'Outfit', sans-serif !important;
+    font-weight: 800 !important;
+    font-size: 1.25rem !important;
+    line-height: 1 !important;
+    box-shadow: 0 4px 12px rgba(255, 90, 31, 0.25) !important;
+}
+div[class*="st-key-nav_logo"] button > div::after {
+    content: 'BiteBox' !important;
+    font-family: 'Outfit', sans-serif !important;
+    font-weight: 800 !important;
+    font-size: 1.35rem !important;
+    color: var(--ink, #17211b) !important;
+    line-height: 1 !important;
+    letter-spacing: -0.025em !important;
+}
 </style>
 """, unsafe_allow_html=True)
 
@@ -216,7 +262,7 @@ if session and session['user']['role'] in ('staff', 'admin'):
         st.session_state['staff_page'] = True
         st.rerun()
 
-st.markdown("""<div class="site-nav"><a href="/?nav=home" target="_self" class="brand"><span class="brand-mark">B</span> BiteBox</a><div class="nav-note">Order online · Collect fresh</div></div><section class="hero"><span class="eyebrow">Freshly made · Ready fast</span><h1>Big flavour.<br>Zero fuss.</h1><p>Build your perfect order from our freshly prepared favourites, check out in seconds, and follow it from kitchen to collection.</p><div class="hero-points"><span>✓ Fresh ingredients</span><span>✓ Live order status</span><span>✓ Easy collection</span></div><a class="order-now" href="#menu">Order now</a></section>""",unsafe_allow_html=True)
+st.markdown("""<div class="site-nav" style="justify-content: flex-end;"><div class="nav-note">Order online · Collect fresh</div></div><section class="hero"><span class="eyebrow">Freshly made · Ready fast</span><h1>Big flavour.<br>Zero fuss.</h1><p>Build your perfect order from our freshly prepared favourites, check out in seconds, and follow it from kitchen to collection.</p><div class="hero-points"><span>✓ Fresh ingredients</span><span>✓ Live order status</span><span>✓ Easy collection</span></div><a class="order-now" href="#menu">Order now</a></section>""",unsafe_allow_html=True)
 if os.environ.get("TAKEAWAY_TEMPORARY_DEMO")=="1":st.info("Demo mode: orders are simulated, shared by visitors and may reset when the free service restarts.")
 notice=st.session_state.pop("order_notice",None)
 if notice:st.success(notice)

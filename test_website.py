@@ -243,24 +243,25 @@ class WebsiteTests(unittest.TestCase):
         self.assertFalse(self.app.exception)
         self.assertEqual(self.app.session_state['trolley'], {1: 1})
 
-    def test_orange_brand_logo_is_clickable_link_and_preserves_trolley(self):
-        # Verify the orange brand logo is rendered with an anchor tag to /?nav=home
-        brand_markdown = [m.value for m in self.app.markdown if 'class="brand"' in m.value]
-        self.assertTrue(len(brand_markdown) > 0)
-        self.assertIn('<a href="/?nav=home" target="_self" class="brand"><span class="brand-mark">B</span> BiteBox</a>', brand_markdown[0])
-
+    def test_orange_brand_logo_navigates_to_storefront_and_preserves_trolley(self):
         # Add item to trolley
         self.app.button(key='add-1').click().run()
         self.assertEqual(self.app.session_state['trolley'], {1: 1})
 
-        # Simulate user visiting another page or clicking /?nav=home
-        self.app.session_state['staff_page'] = True
-        self.app.query_params['nav'] = 'home'
-        self.app.run()
+        # Navigate to staff page
+        next(b for b in self.app.button if b.label == 'Staff access').click().run()
+        self.assertTrue(self.app.session_state.get('staff_page'))
+
+        # Click the brand logo button on staff page
+        self.app.button(key='nav_logo_staff').click().run()
         self.assertFalse(self.app.exception)
         self.assertFalse(self.app.session_state.get('staff_page'))
         self.assertEqual(self.app.session_state['trolley'], {1: 1})
-        self.assertNotIn('nav', self.app.query_params)
+
+        # Test brand logo button on storefront
+        self.app.button(key='nav_logo_storefront').click().run()
+        self.assertFalse(self.app.exception)
+        self.assertEqual(self.app.session_state['trolley'], {1: 1})
 
     def test_staff_login_failure_logout_and_expiry(self):
         next(b for b in self.app.button if b.label == 'Staff access').click().run()
