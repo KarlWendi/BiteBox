@@ -9,6 +9,12 @@ from web_client import APIError, request_api
 
 st.set_page_config(page_title="BiteBox | Fresh food, fast", page_icon="🍔", layout="wide")
 # Remove query parameters from the visible URL before rendering external assets.
+if st.query_params.get('nav') == 'home':
+    st.session_state['staff_page'] = False
+    st.session_state['account_page'] = False
+    st.session_state['ingredients_page'] = False
+    st.session_state.pop('admin_invite_token', None)
+    del st.query_params['nav']
 if 'admin_invite' in st.query_params:
     st.session_state['admin_invite_token'] = st.query_params['admin_invite'][:128]
     del st.query_params['admin_invite']
@@ -24,7 +30,7 @@ st.markdown("""
 :root{--ink:#17211b;--muted:#68736c;--cream:#f8f4ec;--orange:#ff5a1f;--green:#1f6b45}
 .stApp{background:var(--cream);color:var(--ink);font-family:'DM Sans',sans-serif}.block-container{max-width:1180px;padding-top:1.2rem;padding-bottom:4rem}
 h1,h2,h3{font-family:'Outfit',sans-serif!important;letter-spacing:-.025em}[data-testid="stHeader"]{background:transparent}
-.site-nav{display:flex;align-items:center;justify-content:space-between;padding:.4rem 0 1.2rem}.brand{display:flex;align-items:center;gap:.65rem;font:800 1.35rem 'Outfit'}.brand-mark{display:grid;place-items:center;width:38px;height:38px;border-radius:12px;background:var(--orange);color:#fff}.nav-note{color:var(--muted);font-size:.9rem}
+.site-nav{display:flex;align-items:center;justify-content:space-between;padding:.4rem 0 1.2rem}.brand,a.brand,a.brand:hover,a.brand:visited,a.brand:active{display:flex;align-items:center;gap:.65rem;font:800 1.35rem 'Outfit';color:var(--ink)!important;text-decoration:none!important;cursor:pointer}.brand-mark{display:grid;place-items:center;width:38px;height:38px;border-radius:12px;background:var(--orange);color:#fff}.nav-note{color:var(--muted);font-size:.9rem}
 .hero{position:relative;overflow:hidden;padding:3.6rem 4rem;border-radius:30px;color:#fff;background:linear-gradient(120deg,#163f2b,#1f6b45 62%,#2e875c);box-shadow:0 18px 50px rgba(31,107,69,.18)}.hero:after{content:'🍔';position:absolute;right:4%;top:-20%;font-size:14rem;opacity:.16;transform:rotate(-10deg)}.eyebrow{display:inline-block;padding:.42rem .72rem;border-radius:999px;background:#ffffff24;font-weight:700;font-size:.78rem;letter-spacing:.08em;text-transform:uppercase}.hero h1{max-width:650px;margin:.9rem 0 .65rem;color:#fff;font-size:clamp(2.6rem,6vw,5rem);line-height:.94}.hero p{max-width:560px;margin:0;color:#e8f4ed;font-size:1.05rem;line-height:1.65}.hero-points{display:flex;gap:1.4rem;margin-top:1.6rem;font-weight:600;font-size:.88rem}
 .kicker{color:var(--orange);font-weight:800;font-size:.78rem;letter-spacing:.09em;text-transform:uppercase;margin-top:2.6rem}.section-title{margin:.2rem 0 .25rem;font:800 2.1rem 'Outfit'}.section-copy{color:var(--muted);margin-bottom:1.25rem}
 .food-card{min-height:178px;padding:1.35rem;margin-bottom:1rem;border:1px solid #e8e0d4;border-radius:22px;background:#fff;box-shadow:0 8px 25px #2027230e;transition:.18s}.food-card:hover{transform:translateY(-3px);box-shadow:0 13px 30px #2027231a}.food-icon{display:grid;place-items:center;width:52px;height:52px;border-radius:16px;background:#fff0e8;font-size:1.65rem}.food-name{margin-top:.9rem;font:700 1.05rem 'Outfit'}.food-meta{display:flex;justify-content:space-between;align-items:center;margin-top:.45rem}.food-price{color:var(--green);font-weight:800}.stock{color:var(--muted);font-size:.78rem}.sold{color:#b42318}
@@ -114,6 +120,52 @@ h1,h2,h3{font-family:'Outfit',sans-serif!important;letter-spacing:-.025em}[data-
     background-size: 200% 100% !important;
     animation: bitebox-shimmer 2s linear infinite !important;
     border-radius: 12px !important;
+}
+
+/* Clickable Brand Logo Button Across All Views */
+div[class*="st-key-nav_logo"] button {
+    text-decoration: none !important;
+    background: transparent !important;
+    border: none !important;
+    padding: 0 !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    cursor: pointer !important;
+}
+div[class*="st-key-nav_logo"] button:hover {
+    opacity: 0.85 !important;
+}
+div[class*="st-key-nav_logo"] button > div {
+    display: inline-flex !important;
+    align-items: center !important;
+    gap: 0.65rem !important;
+}
+div[class*="st-key-nav_logo"] button span {
+    display: none !important;
+}
+div[class*="st-key-nav_logo"] button > div::before {
+    content: 'B' !important;
+    display: grid !important;
+    place-items: center !important;
+    width: 38px !important;
+    height: 38px !important;
+    border-radius: 12px !important;
+    background: var(--orange, #ff5a1f) !important;
+    color: #fff !important;
+    font-family: 'Outfit', sans-serif !important;
+    font-weight: 800 !important;
+    font-size: 1.25rem !important;
+    line-height: 1 !important;
+    box-shadow: 0 4px 12px rgba(255, 90, 31, 0.25) !important;
+}
+div[class*="st-key-nav_logo"] button > div::after {
+    content: 'BiteBox' !important;
+    font-family: 'Outfit', sans-serif !important;
+    font-weight: 800 !important;
+    font-size: 1.35rem !important;
+    color: var(--ink, #17211b) !important;
+    line-height: 1 !important;
+    letter-spacing: -0.025em !important;
 }
 </style>
 """, unsafe_allow_html=True)
@@ -210,7 +262,7 @@ if session and session['user']['role'] in ('staff', 'admin'):
         st.session_state['staff_page'] = True
         st.rerun()
 
-st.markdown("""<div class="site-nav"><div class="brand"><span class="brand-mark">B</span> BiteBox</div><div class="nav-note">Order online · Collect fresh</div></div><section class="hero"><span class="eyebrow">Freshly made · Ready fast</span><h1>Big flavour.<br>Zero fuss.</h1><p>Build your perfect order from our freshly prepared favourites, check out in seconds, and follow it from kitchen to collection.</p><div class="hero-points"><span>✓ Fresh ingredients</span><span>✓ Live order status</span><span>✓ Easy collection</span></div><a class="order-now" href="#menu">Order now</a></section>""",unsafe_allow_html=True)
+st.markdown("""<div class="site-nav" style="justify-content: flex-end;"><div class="nav-note">Order online · Collect fresh</div></div><section class="hero"><span class="eyebrow">Freshly made · Ready fast</span><h1>Big flavour.<br>Zero fuss.</h1><p>Build your perfect order from our freshly prepared favourites, check out in seconds, and follow it from kitchen to collection.</p><div class="hero-points"><span>✓ Fresh ingredients</span><span>✓ Live order status</span><span>✓ Easy collection</span></div><a class="order-now" href="#menu">Order now</a></section>""",unsafe_allow_html=True)
 if os.environ.get("TAKEAWAY_TEMPORARY_DEMO")=="1":st.info("Demo mode: orders are simulated, shared by visitors and may reset when the free service restarts.")
 notice=st.session_state.pop("order_notice",None)
 if notice:st.success(notice)

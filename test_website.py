@@ -243,6 +243,26 @@ class WebsiteTests(unittest.TestCase):
         self.assertFalse(self.app.exception)
         self.assertEqual(self.app.session_state['trolley'], {1: 1})
 
+    def test_orange_brand_logo_navigates_to_storefront_and_preserves_trolley(self):
+        # Add item to trolley
+        self.app.button(key='add-1').click().run()
+        self.assertEqual(self.app.session_state['trolley'], {1: 1})
+
+        # Navigate to staff page
+        next(b for b in self.app.button if b.label == 'Staff access').click().run()
+        self.assertTrue(self.app.session_state.get('staff_page'))
+
+        # Click the brand logo button on staff page
+        self.app.button(key='nav_logo_staff').click().run()
+        self.assertFalse(self.app.exception)
+        self.assertFalse(self.app.session_state.get('staff_page'))
+        self.assertEqual(self.app.session_state['trolley'], {1: 1})
+
+        # Test brand logo button on storefront
+        self.app.button(key='nav_logo_storefront').click().run()
+        self.assertFalse(self.app.exception)
+        self.assertEqual(self.app.session_state['trolley'], {1: 1})
+
     def test_staff_login_failure_logout_and_expiry(self):
         next(b for b in self.app.button if b.label == 'Staff access').click().run()
         self.client.post('/orders', json={'item_id': 1, 'quantity': 1})
