@@ -177,3 +177,7 @@ Restart `restaurant.py` after placing two burgers: stock should be 18 and the sa
 The website includes customer registration, sign-in, personal order history and password changes. Administrators can create staff accounts, invite additional administrators through single-use links that expire after 24 hours, enable or disable customer/staff access, update stock and operate the kitchen. Customers cannot access staff or administrator actions.
 
 See [account setup and deployment](DEPLOYMENT.md#customer-and-administrator-accounts) to create the initial administrator using hosting secrets. These features must be deployed before they appear on the public demo.
+
+---
+*Note: Repository connected and managed with Antigravity.*
+
