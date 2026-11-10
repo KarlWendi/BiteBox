@@ -92,6 +92,17 @@ class AccountTests(unittest.TestCase):
         self.assertNotEqual(stored, PASSWORD)
         self.assertEqual(self.client.get('/auth/me', headers=self.login('ALICE')).json()['id'], user['id'])
 
+    def test_customer_and_admin_login_endpoints_enforce_roles(self):
+        self.register('alice')
+        customer_body = {'username': 'alice', 'password': PASSWORD}
+        admin_body = {'username': 'owner', 'password': PASSWORD}
+        self.assertEqual(self.client.post('/auth/customer-login', json=customer_body).status_code, 200)
+        self.assertEqual(self.client.post('/auth/admin-login', json=customer_body).status_code, 401)
+        self.assertEqual(self.client.post('/auth/customer-login', json=admin_body).status_code, 401)
+        admin_response = self.client.post('/auth/admin-login', json=admin_body)
+        self.assertEqual(admin_response.status_code, 200, admin_response.text)
+        self.assertEqual(admin_response.json()['user']['role'], 'admin')
+
     def test_order_history_is_owned_and_persistent(self):
         self.register('alice')
         self.register('bob')

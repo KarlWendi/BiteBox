@@ -188,6 +188,17 @@ class AccountWebsiteTests(unittest.TestCase):
         self.assertTrue(any(f.label == 'Account username' for f in self.app.text_input))
         self.assertFalse(any(f.label == 'Choose a username' for f in self.app.text_input))
 
+    def test_account_page_has_customer_and_admin_sign_in_options(self):
+        self.open_account()
+        self.assertTrue(any(button.label == 'Customer sign in' for button in self.app.button))
+        self.assertTrue(any(button.label == 'Admin sign in' for button in self.app.button))
+        self.click('Admin sign in')
+        self.assertTrue(any(field.label == 'Admin username' for field in self.app.text_input))
+        self.assertTrue(any(button.label == 'Admin sign in' for button in self.app.button))
+        self.assertFalse(any(field.label == 'Account username' for field in self.app.text_input))
+        self.click('← Customer sign in')
+        self.assertTrue(any(field.label == 'Account username' for field in self.app.text_input))
+
     def test_account_navigation_preserves_trolley(self):
         self.click('Add to trolley')
         self.assertEqual(self.app.session_state['trolley'], {1: 1})

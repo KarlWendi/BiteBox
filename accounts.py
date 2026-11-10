@@ -264,8 +264,7 @@ def account_router():
             throttle(connection, [('register:' + address, 30)])
             return create_user(connection, credentials, 'customer')
 
-    @router.post('/auth/login')
-    def login(credentials: LoginRequest, request: Request):
+    def login_account(credentials, request, expected_role=None):
         username = normalise_email(credentials.username) if '@' in credentials.username else normalise_username(credentials.username)
         with closing(connect(request.app.state.database_path)) as connection:
             address = request.client.host if request.client else 'unknown'
@@ -274,6 +273,10 @@ def account_router():
             # Match the password work for unknown usernames to reduce timing disclosure.
             valid = password_matches(credentials.password, user['password_hash'] if user else '0' * 32 + ':' + '0' * 64)
             if not valid or not user or not user['active']:
+                raise HTTPException(401, 'Incorrect username or password.')
+            if expected_role and user['role'] != expected_role:
+                # Keep the role boundary deliberately vague so the endpoint
+                # cannot be used to discover which usernames are administrators.
                 raise HTTPException(401, 'Incorrect username or password.')
             if user['email'] and not user['email_verified']:
                 raise HTTPException(403, 'Verify your email before signing in. Use Resend verification email if needed.')
@@ -285,6 +288,21 @@ def account_router():
                 connection.execute('INSERT INTO sessions VALUES (?, ?, ?)',
                                    (hashlib.sha256(token.encode()).hexdigest(), user['id'], expires))
             return {'token': token, 'expires_at': expires, 'user': public_user(user)}
+
+    @router.post('/auth/login')
+    def login(credentials: LoginRequest, request: Request):
+        """Backwards-compatible login for existing API clients."""
+        return login_account(credentials, request)
+
+    @router.post('/auth/customer-login')
+    def customer_login(credentials: LoginRequest, request: Request):
+        """Customer entry point used by the storefront's customer option."""
+        return login_account(credentials, request, expected_role='customer')
+
+    @router.post('/auth/admin-login')
+    def admin_login(credentials: LoginRequest, request: Request):
+        """Administrator entry point; staff and customers cannot use it."""
+        return login_account(credentials, request, expected_role='admin')
 
     @router.get('/auth/me')
     def me(user=Depends(require_account)):

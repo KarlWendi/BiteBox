@@ -82,13 +82,42 @@ def show_account():
         if user['role'] == 'admin':
             show_admin()
     else:
-        st.caption('Sign in for saved order history. Staff and administrators can sign in here too, or you can order as a guest.')
-        with st.form('account_login'):
-            username = st.text_input('Account username', help='You can also enter your verified email address.')
-            password = st.text_input('Account password', type='password')
-            if st.form_submit_button('Sign in'):
+        mode = st.session_state.setdefault('account_mode', 'customer')
+        customer_col, admin_col = st.columns(2)
+        with customer_col:
+            if st.button('Customer sign in', key='customer_signin_option',
+                         type='primary' if mode == 'customer' else 'secondary', width='stretch'):
+                st.session_state['account_mode'] = 'customer'
+                st.rerun()
+        with admin_col:
+            if st.button('Admin sign in', key='admin_signin_option',
+                         type='primary' if mode == 'admin' else 'secondary', width='stretch'):
+                st.session_state['account_mode'] = 'admin'
+                st.rerun()
+
+        if mode == 'admin':
+            st.caption('Administrator access is for invited BiteBox administrators. Staff should use Staff access.')
+            form_key = 'admin_account_login'
+            username_label = 'Admin username'
+            password_label = 'Admin password'
+            submit_label = 'Admin sign in'
+            endpoint = '/auth/admin-login'
+        else:
+            st.caption('Sign in to save order history and return to your trolley. You can also order as a guest.')
+            form_key = 'account_login'
+            username_label = 'Account username'
+            password_label = 'Account password'
+            submit_label = 'Sign in'
+            # Keep the original route for existing integrations. New
+            # storefront customers can use the role-specific option below.
+            endpoint = '/auth/login'
+
+        with st.form(form_key):
+            username = st.text_input(username_label, help='You can also enter your verified email address.')
+            password = st.text_input(password_label, type='password')
+            if st.form_submit_button(submit_label):
                 try:
-                    session = web_client.request_api('POST', '/auth/login', json={'username': username, 'password': password})
+                    session = web_client.request_api('POST', endpoint, json={'username': username, 'password': password})
                 except APIError as error:
                     st.error(str(error))
                 else:
@@ -96,14 +125,23 @@ def show_account():
                     st.session_state.pop('staff_auth', None)
                     st.session_state.pop('staff_expires', None)
                     st.rerun()
-        st.caption('New administrator? Ask an existing administrator for an invitation link. Public registration creates a customer account.')
-        recovery_forms()
-        if st.button("Don't have an account? Create a customer account", type='tertiary'):
-            st.session_state['account_page'] = 'register'
-            st.rerun()
+        if mode == 'admin':
+            st.caption('New administrator? Ask an existing administrator for an invitation link. Public registration never creates admin access.')
+            if st.button('← Customer sign in', type='tertiary', key='back_to_customer_signin'):
+                st.session_state['account_mode'] = 'customer'
+                st.rerun()
+        else:
+            recovery_forms()
+            if st.button("Don't have an account? Create a customer account", type='tertiary'):
+                st.session_state['account_page'] = 'register'
+                st.rerun()
+            if st.button('Need administrator access? Admin sign in', type='tertiary', key='admin_signin_link'):
+                st.session_state['account_mode'] = 'admin'
+                st.rerun()
 
 
 def show_registration():
+    st.session_state['account_mode'] = 'customer'
     st.caption('Create an account to save your order history.')
     use_email = email_available()
     if st.button('Already have an account? Sign in', type='tertiary'):

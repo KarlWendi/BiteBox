@@ -68,7 +68,10 @@ if st.session_state.get('staff_page', False):
     st.stop()
 if st.session_state.get('account_page', False):
     registering = st.session_state['account_page'] == 'register' and not st.session_state.get('account_session')
-    st.title('Create a customer account' if registering else 'BiteBox · Your account')
+    account_title = 'Create a customer account' if registering else (
+        'BiteBox · Admin sign in' if st.session_state.get('account_mode') == 'admin'
+        else 'BiteBox · Your account')
+    st.title(account_title)
     if st.button('← Back to your order', type='tertiary'):
         st.session_state['account_page'] = False
         st.rerun()

@@ -57,6 +57,6 @@ Add two different products, confirm that stock has not changed, remove and re-ad
 
 To demonstrate automatic readiness, place an order and use **mark as preparing**. The Collection column shows a countdown such as **Ready in 2 minutes**, rounding partial minutes up, then **Ready now** when the estimate is reached. Queued orders show **Waiting to start** and collected orders show **Collected**. Leave the page open: it checks every five seconds and changes the status to **ready** after the calculated preparation duration. **Mark as collected** remains manual because the software cannot know when a customer physically receives the food.
 
-This remains an educational simulation with no payment processing, customer accounts or authentication.
+This remains an educational simulation with no payment processing. Customer accounts and invited administrator accounts are available, with role-checked sign-in options and personal order history.
 
 Framework references: [forms](https://docs.streamlit.io/develop/api-reference/execution-flow/st.form), [running an app](https://docs.streamlit.io/develop/concepts/architecture/run-your-app).
