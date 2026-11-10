@@ -35,7 +35,7 @@ Invitations expire after 24 hours and can be accepted once. Administrators can r
 
 `TAKEAWAY_WEBSITE_URL` on the website service controls the invitation-link destination. It defaults to `https://takeaway-ordering-demo.onrender.com/`; set it to your website address for another deployment or `http://localhost:8501` for local testing. Invitations belong to the API/database that issued them. Temporary demo storage resets invalidate invitations and remove created accounts. The first administrator still requires the Render bootstrap settings below.
 
-Customers use **Don't have an account? Create one or sign in** at the top of the storefront to open the account page. After registering or signing in, the **🍔 BiteBox** logo returns to the storefront with the trolley preserved. Signed-in visitors can reopen the page through **Your account**. Usernames contain 3–40 letters, numbers, dots, hyphens or underscores; passwords contain 12–128 characters. Signed-in users can view their own order history, change their password and sign out. Guest checkout and private tracking codes remain available. Guest orders are not automatically transferred to an account.
+Customers use **Customer Sign In** at the top of the storefront to open the sign-in and registration page. Administrators and managers can select **Admin Sign In** (or **Admin portal** in the footer) for direct administrative access. After registering or signing in, the **🍔 BiteBox** logo returns to the storefront with the trolley preserved. Signed-in visitors can reopen the page through **Your account**. Usernames contain 3–40 letters, numbers, dots, hyphens or underscores; passwords contain 12–128 characters. Signed-in users can view their own order history, change their password and sign out. Guest checkout and private tracking codes remain available. Guest orders are not automatically transferred to an account.
 
 Before the first startup with accounts enabled, set these secret environment variables on the service running the API:
 
@@ -44,7 +44,7 @@ Before the first startup with accounts enabled, set these secret environment var
 
 For embedded demo mode (`TAKEAWAY_TEMPORARY_DEMO=1`), set them on the website service. For a separate API, set them on the API service. Deploy the updated website and API together. There is no default admin password and public registration always creates a customer.
 
-Sign in through **Your account** using the administrator credentials. **Administrator controls** provides account access management, individual staff account creation and menu stock updates. The **Staff** tab provides kitchen order status controls for both staff and administrators.
+Sign in through **Admin Sign In** using the administrator credentials. **Administrator controls** provides account access management, individual staff account creation and menu stock updates. The **Staff** tab provides kitchen order status controls for both staff and administrators.
 
 | Role | Controls |
 | --- | --- |

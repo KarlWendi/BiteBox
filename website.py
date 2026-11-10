@@ -15,6 +15,18 @@ if st.query_params.get('nav') == 'home':
     st.session_state['ingredients_page'] = False
     st.session_state.pop('admin_invite_token', None)
     del st.query_params['nav']
+elif st.query_params.get('nav') == 'admin':
+    st.session_state['account_page'] = True
+    st.session_state['sign_in_role_selector'] = 'Administrator Sign In'
+    st.session_state['sign_in_role'] = 'admin'
+    st.session_state['staff_page'] = False
+    del st.query_params['nav']
+elif st.query_params.get('nav') == 'customer':
+    st.session_state['account_page'] = True
+    st.session_state['sign_in_role_selector'] = 'Customer Sign In'
+    st.session_state['sign_in_role'] = 'customer'
+    st.session_state['staff_page'] = False
+    del st.query_params['nav']
 if 'admin_invite' in st.query_params:
     st.session_state['admin_invite_token'] = st.query_params['admin_invite'][:128]
     del st.query_params['admin_invite']
@@ -253,19 +265,50 @@ with col_brand:
     if st.button('🍔 BiteBox', type='tertiary', key='nav_logo_storefront'):
         st.rerun()
 with col_acc:
-    account_label = 'Your account' if st.session_state.get('account_session') else "Don't have an account? Create one or sign in"
-    if st.button(account_label, type='tertiary', key='open_account'):
-        st.session_state['account_page'] = True
-        st.rerun()
+    session = st.session_state.get('account_session')
+    if session:
+        user = session.get('user', {})
+        role_tag = f" ({user.get('role', '').title()})" if user.get('role') else ""
+        account_label = f"Your account{role_tag}"
+        if st.button(account_label, type='tertiary', key='open_account'):
+            st.session_state['account_page'] = True
+            st.rerun()
+    else:
+        col_c, col_a = st.columns([1.2, 1])
+        with col_c:
+            if st.button('Customer Sign In', type='tertiary', key='open_account'):
+                st.session_state['account_page'] = True
+                st.session_state['sign_in_role_selector'] = 'Customer Sign In'
+                st.session_state['sign_in_role'] = 'customer'
+                st.rerun()
+        with col_a:
+            if st.button('Admin Sign In', type='tertiary', key='open_admin_login'):
+                st.session_state['account_page'] = True
+                st.session_state['sign_in_role_selector'] = 'Administrator Sign In'
+                st.session_state['sign_in_role'] = 'admin'
+                st.rerun()
 
 st.session_state.setdefault('trolley', {})
 basket_count = sum(st.session_state['trolley'].values())
 st.markdown(f'<nav class="section-nav" aria-label="Store navigation"><a href="#menu">Menu</a><a href="#your-order">Your order ({basket_count})</a><a href="#track-order">Track order</a></nav>', unsafe_allow_html=True)
 session = st.session_state.get('account_session')
 if session and session['user']['role'] in ('staff', 'admin'):
-    if st.button('Kitchen controls', type='tertiary'):
-        st.session_state['staff_page'] = True
-        st.rerun()
+    if session['user']['role'] == 'admin':
+        col_k, col_adm = st.columns([1, 1])
+        with col_k:
+            if st.button('Kitchen controls', type='tertiary'):
+                st.session_state['staff_page'] = True
+                st.rerun()
+        with col_adm:
+            if st.button('Administrator controls', type='tertiary', key='nav_admin_panel'):
+                st.session_state['account_page'] = True
+                st.session_state['sign_in_role_selector'] = 'Administrator Sign In'
+                st.session_state['sign_in_role'] = 'admin'
+                st.rerun()
+    else:
+        if st.button('Kitchen controls', type='tertiary'):
+            st.session_state['staff_page'] = True
+            st.rerun()
 
 st.markdown("""<div class="site-nav" style="justify-content: flex-end;"><div class="nav-note">Order online · Collect fresh</div></div><section class="hero"><span class="eyebrow">Freshly made · Ready fast</span><h1>Big flavour.<br>Zero fuss.</h1><p>Build your perfect order from our freshly prepared favourites, check out in seconds, and follow it from kitchen to collection.</p><div class="hero-points"><span>✓ Fresh ingredients</span><span>✓ Live order status</span><span>✓ Easy collection</span></div><a class="order-now" href="#menu">Order now</a></section>""",unsafe_allow_html=True)
 if os.environ.get("TAKEAWAY_TEMPORARY_DEMO")=="1":st.info("Demo mode: orders are simulated, shared by visitors and may reset when the free service restarts.")
@@ -347,7 +390,15 @@ with trolley_column:
 
 st.markdown('<div id="track-order"></div><div class="kicker">Order tracking</div><div class="section-title">From kitchen to collection</div><div class="section-copy">This view refreshes automatically while food is being prepared.</div>',unsafe_allow_html=True)
 show_tracking()
-if st.button('Staff access', type='tertiary'):
-    st.session_state['staff_page'] = True
-    st.rerun()
+col_f_staff, col_f_admin = st.columns([1, 1])
+with col_f_staff:
+    if st.button('Staff access', type='tertiary'):
+        st.session_state['staff_page'] = True
+        st.rerun()
+with col_f_admin:
+    if st.button('Admin portal', type='tertiary', key='footer_admin_access'):
+        st.session_state['account_page'] = True
+        st.session_state['sign_in_role_selector'] = 'Administrator Sign In'
+        st.session_state['sign_in_role'] = 'admin'
+        st.rerun()
 st.markdown('<div class="footer"><strong>BiteBox</strong> · Educational ordering simulation · No payments or real deliveries</div>',unsafe_allow_html=True)

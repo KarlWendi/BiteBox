@@ -364,6 +364,32 @@ class AccountWebsiteTests(unittest.TestCase):
         self.login('alice', new_pass)
         self.assertTrue(any(button.label == 'Sign out' for button in self.app.button))
 
+    def test_dedicated_admin_sign_in_option(self):
+        # Open via dedicated Admin Sign In button on storefront
+        self.app.button(key='open_admin_login').click().run()
+        self.assertEqual(self.app.session_state['sign_in_role'], 'admin')
+
+        # Register a customer to test access restriction on the Admin form
+        self.register('customer1')
+        self.open_account()
+        self.click('Sign out')
+
+        # Try signing in with customer credentials into Admin portal
+        self.app.button(key='open_admin_login').click().run()
+        self.fill('Admin username or email', 'customer1')
+        self.fill('Admin password', PASSWORD)
+        self.click('Sign in as Administrator')
+        self.assertTrue(any('access denied' in err.value.lower() for err in self.app.error))
+        self.assertNotIn('account_session', self.app.session_state)
+
+        # Now sign in with real administrator credentials
+        self.fill('Admin username or email', 'owner')
+        self.fill('Admin password', PASSWORD)
+        self.click('Sign in as Administrator')
+        self.assertIn('account_session', self.app.session_state)
+        self.assertEqual(self.app.session_state['account_session']['user']['role'], 'admin')
+        self.assertTrue(any(button.label == 'Sign out' for button in self.app.button))
+
 
 if __name__ == '__main__':
     unittest.main()

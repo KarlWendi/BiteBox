@@ -109,6 +109,8 @@ def show_staff():
         if st.button('Sign in with a staff or admin account', type='tertiary'):
             st.session_state['staff_page'] = False
             st.session_state['account_page'] = True
+            st.session_state['sign_in_role_selector'] = 'Administrator Sign In'
+            st.session_state['sign_in_role'] = 'admin'
             st.rerun()
         st.caption('The form below is for the shared staff login, if configured.')
     account = st.session_state.get('account_session')

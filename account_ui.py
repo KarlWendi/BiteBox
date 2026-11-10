@@ -15,7 +15,7 @@ def account_headers():
 
 
 def clear_account():
-    for key in ('account_session', 'tracking_codes', 'staff_auth', 'staff_expires', 'trolley', 'created_invitation', 'admin_invite_token'):
+    for key in ('account_session', 'tracking_codes', 'staff_auth', 'staff_expires', 'trolley', 'created_invitation', 'admin_invite_token', 'sign_in_role', 'sign_in_role_selector'):
         st.session_state.pop(key, None)
 
 
@@ -259,40 +259,108 @@ def show_account():
         if user['role'] == 'admin':
             show_admin()
     else:
-        st.caption('Sign in for saved order history. Staff and administrators can sign in here too, or you can order as a guest.')
-        with st.form('account_login'):
-            username = st.text_input('Account username or email')
-            password = st.text_input('Account password', type='password')
-            if st.form_submit_button('Sign in'):
-                try:
-                    session = web_client.request_api('POST', '/auth/login', json={'username': username, 'password': password})
-                except APIError as error:
-                    if 'Email not verified' in str(error):
-                        st.session_state['pending_verification_email'] = username.strip()
-                        st.session_state['verification_step'] = 'enter_code'
-                        st.session_state['account_page'] = 'verify'
-                        st.session_state['account_notice'] = 'Please verify your email before signing in. Enter the verification code sent to your email.'
-                        st.rerun()
+        options = ['Customer Sign In', 'Administrator Sign In']
+        if 'sign_in_role_selector' not in st.session_state:
+            initial_idx = 1 if st.session_state.get('sign_in_role') == 'admin' else 0
+            st.session_state['sign_in_role_selector'] = options[initial_idx]
+
+        selected_option = st.radio(
+            'Sign in mode',
+            options,
+            horizontal=True,
+            label_visibility='collapsed',
+            key='sign_in_role_selector'
+        )
+        is_admin_mode = (selected_option == 'Administrator Sign In')
+        st.session_state['sign_in_role'] = 'admin' if is_admin_mode else 'customer'
+
+        if not is_admin_mode:
+            st.subheader('Customer Sign In')
+            st.caption('Sign in to view your saved orders, reorder your favourites, or track progress in real time.')
+            with st.form('account_login'):
+                username = st.text_input('Account username or email')
+                password = st.text_input('Account password', type='password')
+                if st.form_submit_button('Sign in', type='primary'):
+                    try:
+                        session = web_client.request_api('POST', '/auth/login', json={'username': username, 'password': password})
+                    except APIError as error:
+                        if 'Email not verified' in str(error):
+                            st.session_state['pending_verification_email'] = username.strip()
+                            st.session_state['verification_step'] = 'enter_code'
+                            st.session_state['account_page'] = 'verify'
+                            st.session_state['account_notice'] = 'Please verify your email before signing in. Enter the verification code sent to your email.'
+                            st.rerun()
+                        else:
+                            st.error(str(error))
                     else:
-                        st.error(str(error))
-                else:
-                    st.session_state['account_session'] = session
-                    st.session_state.pop('staff_auth', None)
-                    st.session_state.pop('staff_expires', None)
+                        st.session_state['account_session'] = session
+                        st.session_state.pop('staff_auth', None)
+                        st.session_state.pop('staff_expires', None)
+                        st.rerun()
+            col1, col2 = st.columns(2)
+            with col1:
+                if st.button('Forgot password?', type='tertiary'):
+                    st.session_state['account_page'] = 'forgot_password'
                     st.rerun()
-        col1, col2 = st.columns(2)
-        with col1:
-            if st.button('Forgot password?', type='tertiary'):
-                st.session_state['account_page'] = 'forgot_password'
+            with col2:
+                if st.button('Need to verify your email?', type='tertiary'):
+                    st.session_state['account_page'] = 'verify'
+                    st.rerun()
+            st.caption('New to BiteBox? Create an account to save your order history.')
+            if st.button("Don't have an account? Create a customer account", type='tertiary'):
+                st.session_state['account_page'] = 'register'
                 st.rerun()
-        with col2:
-            if st.button('Need to verify your email?', type='tertiary'):
-                st.session_state['account_page'] = 'verify'
-                st.rerun()
-        st.caption('New administrator? Ask an existing administrator for an invitation link. Public registration creates a customer account.')
-        if st.button("Don't have an account? Create a customer account", type='tertiary'):
-            st.session_state['account_page'] = 'register'
-            st.rerun()
+
+        else:
+            st.subheader('Administrator Sign In')
+            st.caption('Sign in with your administrative credentials to manage orders, inventory, and staff.')
+            with st.form('admin_account_login'):
+                admin_username = st.text_input('Admin username or email', key='admin_login_username')
+                admin_password = st.text_input('Admin password', type='password', key='admin_login_password')
+                if st.form_submit_button('Sign in as Administrator', type='primary'):
+                    try:
+                        session = web_client.request_api('POST', '/auth/login', json={'username': admin_username, 'password': admin_password})
+                    except APIError as error:
+                        if 'Email not verified' in str(error):
+                            st.session_state['pending_verification_email'] = admin_username.strip()
+                            st.session_state['verification_step'] = 'enter_code'
+                            st.session_state['account_page'] = 'verify'
+                            st.session_state['account_notice'] = 'Please verify your email before signing in. Enter the verification code sent to your email.'
+                            st.rerun()
+                        else:
+                            st.error(str(error))
+                    else:
+                        user_role = session.get('user', {}).get('role')
+                        if user_role not in ('admin', 'staff'):
+                            st.error('Access denied: This account has Customer privileges. Please use the Customer Sign In option.')
+                        else:
+                            st.session_state['account_session'] = session
+                            st.session_state.pop('staff_auth', None)
+                            st.session_state.pop('staff_expires', None)
+                            st.session_state['account_notice'] = f"Welcome back, {session['user']['name']}! Administrator controls loaded."
+                            st.rerun()
+
+            col_admin_pw, col_admin_vf = st.columns(2)
+            with col_admin_pw:
+                if st.button('Forgot password?', type='tertiary', key='admin_forgot_pwd'):
+                    st.session_state['account_page'] = 'forgot_password'
+                    st.rerun()
+            with col_admin_vf:
+                if st.button('Need to verify your email?', type='tertiary', key='admin_verify_email'):
+                    st.session_state['account_page'] = 'verify'
+                    st.rerun()
+
+            st.markdown('---')
+            st.caption('**Administrator Registration & Invitations**')
+            st.info('Administrator accounts require an invitation token from an existing administrator, or server environment credentials.')
+            with st.expander('Have an administrator invitation link or token?'):
+                invite_token_input = st.text_input('Invitation token', key='manual_admin_invite_token', help='Paste the token from an existing administrator')
+                if st.button('Proceed with Invitation Token', key='btn_submit_invite_token'):
+                    if not invite_token_input.strip():
+                        st.error('Please enter an invitation token.')
+                    else:
+                        st.session_state['admin_invite_token'] = invite_token_input.strip()[:128]
+                        st.rerun()
 
 
 def show_registration():
@@ -328,7 +396,7 @@ def show_registration():
 
 
 def show_admin():
-    with st.expander('Administrator controls'):
+    with st.expander('Administrator controls', expanded=True):
         show_invitations()
         try:
             users = web_client.request_api('GET', '/admin/users', headers=account_headers())

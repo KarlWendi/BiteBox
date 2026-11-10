@@ -23,7 +23,7 @@ The project also explores how the number of kitchen stations affects waiting tim
 - Add products directly from their menu cards. The navigation shows the number of items in your trolley.
 - Use the trolley's plus/minus controls to change quantities or remove a product. Stock and the 50-per-product limit cap additions; checkout checks stock again.
 - Use Menu, Your order and Track order links to move around the page. A compact welcome banner includes an Order now shortcut.
-- Registration and sign-in have separate screens, visible field labels and password guidance. Returning to the order preserves the trolley.
+- Dedicated sign-in options for customers and administrators, with visible field labels and password guidance. Returning to the order preserves the trolley.
 - Staff access is separate from customer tracking. Staff and administrators who sign in with an individual account see a Kitchen controls link; the legacy shared staff login remains available.
 - The default light theme matches the storefront, including form fields and focus indicators.
 
